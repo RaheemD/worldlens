@@ -1,0 +1,19 @@
+project_id = "blsjehsiilmnvdacsaht"
+
+[functions.analyze-image]
+verify_jwt = false
+
+[functions.translate]
+verify_jwt = false
+
+[functions.scan-receipt]
+verify_jwt = false
+
+[functions.generate-summary]
+verify_jwt = true
+
+[functions.get-safety-info]
+verify_jwt = false
+
+[functions.plan-trip]
+verify_jwt = false
