@@ -2,32 +2,8 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-const normalizeEnvValue = (value: unknown) => {
-  if (typeof value !== 'string') return '';
-  const trimmed = value.trim();
-  if (
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  ) {
-    return trimmed.slice(1, -1).trim();
-  }
-  return trimmed;
-};
-
-const SUPABASE_URL = normalizeEnvValue(import.meta.env.VITE_SUPABASE_URL);
-const SUPABASE_PUBLISHABLE_KEY = normalizeEnvValue(import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY);
-
-if (!SUPABASE_URL) {
-  throw new Error('Missing VITE_SUPABASE_URL. Set it in your hosting environment variables.');
-}
-
-if (!SUPABASE_PUBLISHABLE_KEY) {
-  throw new Error('Missing VITE_SUPABASE_PUBLISHABLE_KEY. Set it in your hosting environment variables.');
-}
-
-if (!/^https?:\/\//i.test(SUPABASE_URL)) {
-  throw new Error('Invalid VITE_SUPABASE_URL. It must start with https://');
-}
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
