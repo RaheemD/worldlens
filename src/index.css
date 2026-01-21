@@ -1,0 +1,241 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* WorldLens Design System - Dark Mode Travel Intelligence */
+
+@layer base {
+  /* Light Mode */
+  :root {
+    /* Light backgrounds */
+    --background: 210 20% 98%;
+    --foreground: 220 20% 10%;
+
+    /* Cards with subtle depth */
+    --card: 0 0% 100%;
+    --card-foreground: 220 20% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 20% 10%;
+
+    /* Primary teal accent - action color */
+    --primary: 175 80% 35%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary muted surface */
+    --secondary: 210 15% 93%;
+    --secondary-foreground: 220 20% 25%;
+
+    --muted: 210 15% 90%;
+    --muted-foreground: 215 15% 45%;
+
+    /* Accent for highlights */
+    --accent: 175 70% 30%;
+    --accent-foreground: 0 0% 100%;
+
+    /* Warning amber */
+    --destructive: 38 95% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Danger coral */
+    --danger: 0 75% 50%;
+    --danger-foreground: 0 0% 100%;
+
+    /* Success green */
+    --success: 150 70% 35%;
+    --success-foreground: 0 0% 100%;
+
+    /* Warning amber */
+    --warning: 38 95% 50%;
+    --warning-foreground: 220 20% 6%;
+
+    /* Info blue */
+    --info: 200 85% 45%;
+    --info-foreground: 0 0% 100%;
+
+    --border: 210 15% 85%;
+    --input: 210 15% 90%;
+    --ring: 175 80% 35%;
+
+    --radius: 1rem;
+
+    /* Sidebar */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 220 20% 20%;
+    --sidebar-primary: 175 80% 35%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 210 15% 93%;
+    --sidebar-accent-foreground: 220 20% 20%;
+    --sidebar-border: 210 15% 88%;
+    --sidebar-ring: 175 80% 35%;
+
+    /* Light mode gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(175 80% 35%) 0%, hsl(190 85% 40%) 100%);
+    --gradient-scan: linear-gradient(135deg, hsl(175 80% 35%) 0%, hsl(150 70% 30%) 100%);
+    --gradient-location: linear-gradient(135deg, hsl(200 85% 45%) 0%, hsl(220 80% 40%) 100%);
+    --gradient-warning: linear-gradient(135deg, hsl(38 95% 50%) 0%, hsl(25 90% 45%) 100%);
+    --gradient-danger: linear-gradient(135deg, hsl(0 75% 50%) 0%, hsl(350 80% 45%) 100%);
+    --gradient-glass: linear-gradient(135deg, hsla(0, 0%, 100%, 0.9) 0%, hsla(210, 15%, 98%, 0.95) 100%);
+    --gradient-hero: radial-gradient(ellipse at top, hsl(175 80% 85% / 0.3) 0%, transparent 60%);
+
+    /* Light mode shadows */
+    --shadow-glow: 0 0 30px -5px hsl(175 80% 35% / 0.2);
+    --shadow-card: 0 4px 20px -4px hsl(220 20% 0% / 0.1);
+    --shadow-button: 0 4px 15px -3px hsl(175 80% 35% / 0.3);
+  }
+
+  /* Dark Mode */
+  .dark {
+    /* Deep dark background - outdoor readable */
+    --background: 220 20% 6%;
+    --foreground: 210 20% 95%;
+
+    /* Cards with subtle glass effect */
+    --card: 220 18% 10%;
+    --card-foreground: 210 20% 95%;
+
+    --popover: 220 18% 12%;
+    --popover-foreground: 210 20% 95%;
+
+    /* Primary teal accent - action color */
+    --primary: 175 80% 45%;
+    --primary-foreground: 220 20% 6%;
+
+    /* Secondary muted surface */
+    --secondary: 220 15% 15%;
+    --secondary-foreground: 210 20% 85%;
+
+    --muted: 220 15% 18%;
+    --muted-foreground: 215 15% 55%;
+
+    /* Accent for highlights */
+    --accent: 175 70% 35%;
+    --accent-foreground: 210 20% 95%;
+
+    /* Warning amber */
+    --destructive: 38 95% 55%;
+    --destructive-foreground: 220 20% 6%;
+
+    /* Danger coral */
+    --danger: 0 75% 55%;
+    --danger-foreground: 210 20% 95%;
+
+    /* Success green */
+    --success: 150 70% 40%;
+    --success-foreground: 220 20% 6%;
+
+    /* Warning amber */
+    --warning: 38 95% 55%;
+    --warning-foreground: 220 20% 6%;
+
+    /* Info blue */
+    --info: 200 85% 55%;
+    --info-foreground: 220 20% 6%;
+
+    --border: 220 15% 20%;
+    --input: 220 15% 15%;
+    --ring: 175 80% 45%;
+
+    /* Sidebar */
+    --sidebar-background: 220 20% 8%;
+    --sidebar-foreground: 210 20% 90%;
+    --sidebar-primary: 175 80% 45%;
+    --sidebar-primary-foreground: 220 20% 6%;
+    --sidebar-accent: 220 15% 15%;
+    --sidebar-accent-foreground: 210 20% 90%;
+    --sidebar-border: 220 15% 18%;
+    --sidebar-ring: 175 80% 45%;
+
+    /* Dark mode gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(175 80% 45%) 0%, hsl(190 85% 50%) 100%);
+    --gradient-scan: linear-gradient(135deg, hsl(175 80% 45%) 0%, hsl(150 70% 40%) 100%);
+    --gradient-location: linear-gradient(135deg, hsl(200 85% 55%) 0%, hsl(220 80% 50%) 100%);
+    --gradient-warning: linear-gradient(135deg, hsl(38 95% 55%) 0%, hsl(25 90% 50%) 100%);
+    --gradient-danger: linear-gradient(135deg, hsl(0 75% 55%) 0%, hsl(350 80% 50%) 100%);
+    --gradient-glass: linear-gradient(135deg, hsla(220, 20%, 15%, 0.8) 0%, hsla(220, 18%, 10%, 0.9) 100%);
+    --gradient-hero: radial-gradient(ellipse at top, hsl(175 80% 15% / 0.4) 0%, transparent 60%);
+
+    /* Dark mode shadows */
+    --shadow-glow: 0 0 30px -5px hsl(175 80% 45% / 0.3);
+    --shadow-card: 0 4px 20px -4px hsl(220 20% 0% / 0.5);
+    --shadow-button: 0 4px 15px -3px hsl(175 80% 45% / 0.4);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  /* Custom scrollbar for dark theme */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-background;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/50;
+  }
+}
+
+@layer utilities {
+  .glass {
+    background: var(--gradient-glass);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .glow-primary {
+    box-shadow: var(--shadow-glow);
+  }
+
+  .glow-text {
+    text-shadow: 0 0 20px hsl(175 80% 45% / 0.5);
+  }
+
+  .gradient-border {
+    position: relative;
+  }
+
+  .gradient-border::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    padding: 1px;
+    background: var(--gradient-primary);
+    border-radius: inherit;
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask-composite: xor;
+    -webkit-mask-composite: xor;
+    pointer-events: none;
+  }
+
+  .text-gradient {
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .animate-pulse-slow {
+    animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 20px);
+  }
+}
