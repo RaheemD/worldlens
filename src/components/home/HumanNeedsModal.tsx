@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { 
   Bath, 
@@ -91,6 +91,13 @@ const needsConfig: Record<NeedType, NeedConfig> = {
 
 const needsList: NeedType[] = ["toilet", "water", "atm", "pharmacy", "police", "hospital", "taxi", "exit"];
 
+const overpassEndpoints = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.openstreetmap.ru/api/interpreter",
+  "https://overpass.nchc.org.tw/api/interpreter",
+];
+
 interface NearbyResult {
   name: string;
   distance: number;
@@ -109,6 +116,8 @@ export function HumanNeedsModal({ children }: HumanNeedsModalProps) {
   const [isSearching, setIsSearching] = useState(false);
   const [results, setResults] = useState<NearbyResult[]>([]);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const activeRequestRef = useRef<AbortController | null>(null);
+  const cacheRef = useRef<Map<string, { ts: number; results: NearbyResult[]; error: string | null }>>(new Map());
 
   // Reset when modal closes
   useEffect(() => {
@@ -116,8 +125,57 @@ export function HumanNeedsModal({ children }: HumanNeedsModalProps) {
       setSelectedNeed(null);
       setResults([]);
       setSearchError(null);
+      if (activeRequestRef.current) {
+        activeRequestRef.current.abort();
+        activeRequestRef.current = null;
+      }
     }
   }, [open]);
+
+  const abortActiveRequest = () => {
+    if (activeRequestRef.current) {
+      activeRequestRef.current.abort();
+      activeRequestRef.current = null;
+    }
+  };
+
+  const runOverpassQuery = async (overpassQuery: string, timeoutMs: number) => {
+    const controller = new AbortController();
+    abortActiveRequest();
+    activeRequestRef.current = controller;
+
+    const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      let lastError: unknown = null;
+      for (const endpoint of overpassEndpoints) {
+        try {
+          const response = await fetch(endpoint, {
+            method: "POST",
+            body: `data=${encodeURIComponent(overpassQuery)}`,
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            signal: controller.signal,
+            cache: "no-store",
+          });
+
+          if (response.ok) {
+            return await response.json();
+          }
+
+          const text = await response.text().catch(() => "");
+          lastError = new Error(`${response.status} ${response.statusText}${text ? `: ${text}` : ""}`);
+        } catch (err) {
+          if (controller.signal.aborted) throw err;
+          lastError = err;
+        }
+      }
+      throw lastError || new Error("Search failed");
+    } finally {
+      clearTimeout(timeoutHandle);
+      if (activeRequestRef.current === controller) {
+        activeRequestRef.current = null;
+      }
+    }
+  };
 
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
     const R = 6371e3;
@@ -141,6 +199,8 @@ export function HumanNeedsModal({ children }: HumanNeedsModalProps) {
       return;
     }
 
+    if (isSearching) return;
+
     setSelectedNeed(needType);
     setIsSearching(true);
     setSearchError(null);
@@ -148,10 +208,18 @@ export function HumanNeedsModal({ children }: HumanNeedsModalProps) {
 
     const config = needsConfig[needType];
     const radius = needType === "hospital" || needType === "police" ? 5000 : 2000;
+    const cacheKey = `${needType}:${Math.round(latitude * 1000) / 1000}:${Math.round(longitude * 1000) / 1000}:${radius}`;
+    const cached = cacheRef.current.get(cacheKey);
+    if (cached && Date.now() - cached.ts < 60_000) {
+      setResults(cached.results);
+      setSearchError(cached.error);
+      setIsSearching(false);
+      return;
+    }
 
     try {
       const overpassQuery = `
-        [out:json][timeout:25];
+        [out:json][timeout:12];
         (
           node["amenity"="${config.amenity}"](around:${radius},${latitude},${longitude});
           way["amenity"="${config.amenity}"](around:${radius},${latitude},${longitude});
@@ -159,15 +227,7 @@ export function HumanNeedsModal({ children }: HumanNeedsModalProps) {
         out center body;
       `;
 
-      const response = await fetch("https://overpass-api.de/api/interpreter", {
-        method: "POST",
-        body: `data=${encodeURIComponent(overpassQuery)}`,
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      });
-
-      if (!response.ok) throw new Error("Failed to search");
-
-      const data = await response.json();
+      const data = await runOverpassQuery(overpassQuery, 12_000);
       
       const places: NearbyResult[] = data.elements
         .map((el: any) => {
@@ -187,11 +247,16 @@ export function HumanNeedsModal({ children }: HumanNeedsModalProps) {
       setResults(places);
       
       if (places.length === 0) {
-        setSearchError(`No ${config.label.toLowerCase()} found within ${radius / 1000}km`);
+        const message = `No ${config.label.toLowerCase()} found within ${radius / 1000}km`;
+        setSearchError(message);
+        cacheRef.current.set(cacheKey, { ts: Date.now(), results: [], error: message });
+      } else {
+        cacheRef.current.set(cacheKey, { ts: Date.now(), results: places, error: null });
       }
     } catch (err) {
-      console.error("Search error:", err);
-      setSearchError("Search failed. Please try again.");
+      const message = "Search service is busy. Please try again.";
+      setSearchError(message);
+      cacheRef.current.set(cacheKey, { ts: Date.now(), results: [], error: message });
     } finally {
       setIsSearching(false);
     }
@@ -214,6 +279,8 @@ export function HumanNeedsModal({ children }: HumanNeedsModalProps) {
       return;
     }
 
+    if (isSearching) return;
+
     setSelectedNeed("exit");
     setIsSearching(true);
     setSearchError(null);
@@ -222,7 +289,7 @@ export function HumanNeedsModal({ children }: HumanNeedsModalProps) {
     try {
       // Search for transportation hubs, main roads, and well-lit public areas
       const overpassQuery = `
-        [out:json][timeout:15];
+        [out:json][timeout:10];
         (
           node["public_transport"="station"](around:2000,${latitude},${longitude});
           node["railway"="station"](around:2000,${latitude},${longitude});
@@ -233,15 +300,7 @@ export function HumanNeedsModal({ children }: HumanNeedsModalProps) {
         out body;
       `;
 
-      const response = await fetch("https://overpass-api.de/api/interpreter", {
-        method: "POST",
-        body: `data=${encodeURIComponent(overpassQuery)}`,
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      });
-
-      if (!response.ok) throw new Error("Search failed");
-
-      const data = await response.json();
+      const data = await runOverpassQuery(overpassQuery, 10_000);
 
       const places: NearbyResult[] = data.elements
         .map((el: any) => {
@@ -263,10 +322,10 @@ export function HumanNeedsModal({ children }: HumanNeedsModalProps) {
         setSearchError("Opening Google Maps to find transit options...");
       }
     } catch (err) {
-      console.error("Exit route error:", err);
       // Fallback to Google Maps
       const fallbackUrl = `https://www.google.com/maps/search/transit/@${latitude},${longitude},15z`;
       window.open(fallbackUrl, "_blank");
+      setSearchError("Opening Google Maps to find transit options...");
     } finally {
       setIsSearching(false);
     }
@@ -332,7 +391,7 @@ export function HumanNeedsModal({ children }: HumanNeedsModalProps) {
                       key={needType}
                       className="flex flex-col items-center gap-2 p-3 rounded-xl bg-card border border-border/50 hover:border-primary/30 hover:bg-accent transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       onClick={() => handleNeedClick(needType)}
-                      disabled={locationLoading || !!locationError}
+                      disabled={locationLoading || !!locationError || isSearching}
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
                     >
@@ -350,7 +409,7 @@ export function HumanNeedsModal({ children }: HumanNeedsModalProps) {
                 variant="destructive" 
                 className="w-full mt-2 bg-danger hover:bg-danger/90"
                 onClick={handleGetMeOut}
-                disabled={locationLoading || !!locationError}
+                disabled={locationLoading || !!locationError || isSearching}
               >
                 <LogOut className="h-4 w-4 mr-2" />
                 GET ME OUT
