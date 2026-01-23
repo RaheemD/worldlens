@@ -24,10 +24,30 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import { toast } from "sonner";
 
+const overpassEndpoints = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.openstreetmap.ru/api/interpreter",
+  "https://overpass.nchc.org.tw/api/interpreter",
+];
+
+type OverpassElement = {
+  id: number | string;
+  lat?: number;
+  lon?: number;
+  center?: { lat: number; lon: number };
+  tags?: Record<string, string>;
+};
+
+type OverpassResponse = {
+  elements?: OverpassElement[];
+};
+
 interface Place {
   icon: React.ElementType;
   name: string;
   distance: string;
+  distanceMeters: number;
   type: string;
   lat?: number;
   lng?: number;
@@ -51,6 +71,52 @@ export default function Location() {
   const [hasFetched, setHasFetched] = useState(false);
   const hasFetchedInitial = useRef(false);
   const fetchInProgress = useRef(false);
+  const activeRequestRef = useRef<AbortController | null>(null);
+  const cacheRef = useRef<Map<string, { ts: number; places: { attractions: Place[]; food: Place[]; free: Place[]; services: Place[] } }>>(new Map());
+  const lastGoodRef = useRef<{ attractions: Place[]; food: Place[]; free: Place[]; services: Place[] } | null>(null);
+
+  const abortActiveRequest = () => {
+    if (activeRequestRef.current) {
+      activeRequestRef.current.abort();
+      activeRequestRef.current = null;
+    }
+  };
+
+  const runOverpassQuery = async (query: string, timeoutMs: number): Promise<OverpassResponse> => {
+    const controller = new AbortController();
+    abortActiveRequest();
+    activeRequestRef.current = controller;
+
+    const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      let lastError: unknown = null;
+      for (const endpoint of overpassEndpoints) {
+        try {
+          const response = await fetch(endpoint, {
+            method: "POST",
+            body: `data=${encodeURIComponent(query)}`,
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            signal: controller.signal,
+            cache: "no-store",
+          });
+          if (response.ok) {
+            return (await response.json()) as OverpassResponse;
+          }
+          const text = await response.text().catch(() => "");
+          lastError = new Error(`${response.status} ${response.statusText}${text ? `: ${text}` : ""}`);
+        } catch (err) {
+          if (controller.signal.aborted) throw err;
+          lastError = err;
+        }
+      }
+      throw lastError || new Error("Failed to fetch places");
+    } finally {
+      clearTimeout(timeoutHandle);
+      if (activeRequestRef.current === controller) {
+        activeRequestRef.current = null;
+      }
+    }
+  };
 
   const fetchNearbyPlaces = useCallback(async (lat: number, lng: number) => {
     // Prevent concurrent fetches
@@ -59,101 +125,131 @@ export default function Location() {
     setIsLoadingPlaces(true);
     
     try {
-      // Use Overpass API to find nearby POIs
-      const radius = 1000; // 1km radius
-      const overpassQuery = `
-        [out:json][timeout:25];
-        (
-          node["tourism"~"museum|attraction|monument|artwork"](around:${radius},${lat},${lng});
-          node["amenity"~"restaurant|cafe|fast_food|bar"](around:${radius},${lat},${lng});
-          node["amenity"~"toilets|atm|pharmacy|police|hospital"](around:${radius},${lat},${lng});
-          node["leisure"~"park|garden"](around:${radius},${lat},${lng});
-          node["public_transport"="station"](around:${radius},${lat},${lng});
-        );
-        out body;
-      `;
-
-      const response = await fetch("https://overpass-api.de/api/interpreter", {
-        method: "POST",
-        body: `data=${encodeURIComponent(overpassQuery)}`,
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch places");
+      const radius = 1500;
+      const cacheKey = `${Math.round(lat * 1000) / 1000}:${Math.round(lng * 1000) / 1000}:${radius}`;
+      const cached = cacheRef.current.get(cacheKey);
+      if (cached && Date.now() - cached.ts < 60_000) {
+        setNearbyPlaces(cached.places);
+        setLastUpdated(new Date(cached.ts));
+        setHasFetched(true);
+        return;
       }
 
-      const data = await response.json();
+      const overpassQuery = `
+        [out:json][timeout:12];
+        (
+          nwr["tourism"~"museum|attraction|monument|artwork|viewpoint|zoo|theme_park"](around:${radius},${lat},${lng});
+          nwr["historic"](around:${radius},${lat},${lng});
+          nwr["amenity"~"restaurant|cafe|fast_food|bar"](around:${radius},${lat},${lng});
+          nwr["leisure"~"park|garden|playground"](around:${radius},${lat},${lng});
+          nwr["amenity"~"toilets|atm|pharmacy|police|hospital|bank"](around:${radius},${lat},${lng});
+          nwr["public_transport"="station"](around:${radius},${lat},${lng});
+          nwr["railway"="station"](around:${radius},${lat},${lng});
+          nwr["shop"~"supermarket|convenience|mall"](around:${radius},${lat},${lng});
+        );
+        out center body;
+      `;
+
+      const data = await runOverpassQuery(overpassQuery, 12_000);
       
       const attractions: Place[] = [];
       const food: Place[] = [];
       const free: Place[] = [];
       const services: Place[] = [];
+      const seen = new Set<string>();
 
-      data.elements.forEach((element: any) => {
+      const elements = Array.isArray(data.elements) ? data.elements : [];
+
+      for (const element of elements) {
         const tags = element.tags || {};
         const name = tags.name || tags["name:en"] || "Unknown";
-        const distance = calculateDistance(lat, lng, element.lat, element.lon);
-        
+        const elLat = element.lat ?? element.center?.lat;
+        const elLng = element.lon ?? element.center?.lon;
+        if (typeof elLat !== "number" || typeof elLng !== "number") continue;
+
+        const distanceMeters = calculateDistance(lat, lng, elLat, elLng);
+
         const place: Place = {
           icon: Landmark,
           name,
-          distance: formatDistance(distance),
+          distance: formatDistance(distanceMeters),
+          distanceMeters,
           type: "",
-          lat: element.lat,
-          lng: element.lon,
+          lat: elLat,
+          lng: elLng,
         };
 
-        // Categorize places
-        if (tags.tourism) {
-          place.type = capitalizeFirst(tags.tourism);
-          place.icon = Landmark;
-          if (tags.tourism === "museum") place.icon = Building2;
-          attractions.push(place);
-        } else if (tags.amenity === "restaurant" || tags.amenity === "cafe" || tags.amenity === "fast_food" || tags.amenity === "bar") {
+        const foodAmenities = new Set(["restaurant", "cafe", "fast_food", "bar"]);
+        const serviceAmenities = new Map<string, { icon: React.ElementType; type: string }>([
+          ["toilets", { icon: Bath, type: "Toilet" }],
+          ["atm", { icon: Bank, type: "ATM" }],
+          ["bank", { icon: Bank, type: "Bank" }],
+          ["pharmacy", { icon: Pill, type: "Pharmacy" }],
+          ["police", { icon: Shield, type: "Police" }],
+          ["hospital", { icon: Building2, type: "Hospital" }],
+        ]);
+
+        let bucket: "attractions" | "food" | "free" | "services" | null = null;
+
+        if (tags.tourism || tags.historic) {
+          bucket = "attractions";
+          place.type = capitalizeFirst(tags.tourism || tags.historic || "Attraction");
+          place.icon = tags.tourism === "museum" ? Building2 : Landmark;
+        } else if (foodAmenities.has(tags.amenity || "")) {
+          bucket = "food";
           place.type = tags.cuisine ? capitalizeFirst(tags.cuisine.split(";")[0]) : capitalizeFirst(tags.amenity);
           place.icon = Utensils;
-          food.push(place);
-        } else if (tags.leisure === "park" || tags.leisure === "garden") {
+        } else if (tags.leisure && ["park", "garden", "playground"].includes(tags.leisure)) {
+          bucket = "free";
           place.type = capitalizeFirst(tags.leisure);
           place.icon = Sparkles;
-          free.push(place);
-        } else if (tags.amenity) {
-          const serviceMap: Record<string, { icon: React.ElementType; type: string }> = {
-            toilets: { icon: Bath, type: "Toilet" },
-            atm: { icon: Bank, type: "ATM" },
-            pharmacy: { icon: Pill, type: "Pharmacy" },
-            police: { icon: Shield, type: "Police" },
-            hospital: { icon: Building2, type: "Hospital" },
-          };
-          const service = serviceMap[tags.amenity];
-          if (service) {
-            place.icon = service.icon;
-            place.type = service.type;
-            services.push(place);
-          }
-        } else if (tags.public_transport === "station") {
+        } else if (tags.public_transport === "station" || tags.railway === "station") {
+          bucket = "services";
           place.icon = Bus;
-          place.type = tags.station || "Station";
-          services.push(place);
+          place.type = "Station";
+        } else if (tags.amenity) {
+          const mapped = serviceAmenities.get(tags.amenity);
+          if (mapped) {
+            bucket = "services";
+            place.icon = mapped.icon;
+            place.type = mapped.type;
+          }
+        } else if (tags.shop) {
+          bucket = "services";
+          place.icon = Ticket;
+          place.type = "Shop";
         }
-      });
 
-      // Sort by distance and limit
-      setNearbyPlaces({
-        attractions: attractions.sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance)).slice(0, 10),
-        food: food.sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance)).slice(0, 10),
-        free: free.sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance)).slice(0, 10),
-        services: services.sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance)).slice(0, 10),
-      });
+        if (!bucket) continue;
+
+        const key = `${bucket}:${name}:${Math.round(elLat * 1e5)}:${Math.round(elLng * 1e5)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        if (bucket === "attractions") attractions.push(place);
+        if (bucket === "food") food.push(place);
+        if (bucket === "free") free.push(place);
+        if (bucket === "services") services.push(place);
+      }
+
+      const places = {
+        attractions: attractions.sort((a, b) => a.distanceMeters - b.distanceMeters).slice(0, 10),
+        food: food.sort((a, b) => a.distanceMeters - b.distanceMeters).slice(0, 10),
+        free: free.sort((a, b) => a.distanceMeters - b.distanceMeters).slice(0, 10),
+        services: services.sort((a, b) => a.distanceMeters - b.distanceMeters).slice(0, 10),
+      };
+
+      setNearbyPlaces(places);
+      lastGoodRef.current = places;
+      cacheRef.current.set(cacheKey, { ts: Date.now(), places });
       setLastUpdated(new Date());
       setHasFetched(true);
     } catch (error) {
-      console.error("Error fetching places:", error);
-      // Only show error toast if we don't have any data yet
-      if (!hasFetched) {
+      if (lastGoodRef.current) {
+        setNearbyPlaces(lastGoodRef.current);
+        setHasFetched(true);
+      }
+      if (!hasFetched && !lastGoodRef.current) {
         toast.error("Failed to fetch nearby places");
       }
     } finally {
