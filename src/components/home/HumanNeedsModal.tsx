@@ -286,10 +286,65 @@ export function HumanNeedsModal({ children }: HumanNeedsModalProps) {
     setSearchError(null);
     setResults([]);
 
-    const fallbackUrl = `https://www.google.com/maps/search/transit+station/@${latitude},${longitude},15z`;
-    window.open(fallbackUrl, "_blank");
-    setSearchError("Opening Google Maps to find transit options...");
-    setIsSearching(false);
+    const radius = 3000;
+    const cacheKey = `exit:${Math.round(latitude * 1000) / 1000}:${Math.round(longitude * 1000) / 1000}:${radius}`;
+    const cached = cacheRef.current.get(cacheKey);
+    if (cached && Date.now() - cached.ts < 60_000) {
+      setResults(cached.results);
+      setSearchError(cached.error);
+      setIsSearching(false);
+      return;
+    }
+
+    try {
+      const overpassQuery = `
+        [out:json][timeout:10];
+        (
+          node["public_transport"="station"](around:${radius},${latitude},${longitude});
+          way["public_transport"="station"](around:${radius},${latitude},${longitude});
+          node["railway"="station"](around:${radius},${latitude},${longitude});
+          way["railway"="station"](around:${radius},${latitude},${longitude});
+          node["amenity"="bus_station"](around:${radius},${latitude},${longitude});
+          way["amenity"="bus_station"](around:${radius},${latitude},${longitude});
+          node["highway"="bus_stop"](around:${radius},${latitude},${longitude});
+          node["amenity"="taxi"](around:${radius},${latitude},${longitude});
+          way["amenity"="taxi"](around:${radius},${latitude},${longitude});
+        );
+        out center body;
+      `;
+
+      const data = await runOverpassQuery(overpassQuery, 10_000);
+
+      const places: NearbyResult[] = data.elements
+        .map((el: any) => {
+          const lat = el.lat || el.center?.lat;
+          const lng = el.lon || el.center?.lon;
+          if (!lat || !lng) return null;
+
+          const name = el.tags?.name || el.tags?.["name:en"] || "Exit option";
+          const distance = calculateDistance(latitude, longitude, lat, lng);
+          return { name, distance, lat, lng };
+        })
+        .filter(Boolean)
+        .sort((a: NearbyResult, b: NearbyResult) => a.distance - b.distance)
+        .slice(0, 5);
+
+      setResults(places);
+
+      if (places.length === 0) {
+        const message = "No nearby exit options found. Use GET ME OUT if needed.";
+        setSearchError(message);
+        cacheRef.current.set(cacheKey, { ts: Date.now(), results: [], error: message });
+      } else {
+        cacheRef.current.set(cacheKey, { ts: Date.now(), results: places, error: null });
+      }
+    } catch {
+      const message = "Search service is busy. Try again, or use GET ME OUT.";
+      setSearchError(message);
+      cacheRef.current.set(cacheKey, { ts: Date.now(), results: [], error: message });
+    } finally {
+      setIsSearching(false);
+    }
   };
 
   const handleNeedClick = (needType: NeedType) => {
