@@ -22,8 +22,11 @@ export function useExchangeRates(baseCurrency: string = "USD") {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
     
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
       const { data, error } = await supabase.functions.invoke("get-exchange-rates", {
         body: { base: baseCurrency },
+        ...(accessToken ? { headers: { Authorization: `Bearer ${accessToken}` } } : {}),
       });
 
       if (error) throw error;
@@ -40,12 +43,27 @@ export function useExchangeRates(baseCurrency: string = "USD") {
         throw new Error(data.error || "Failed to fetch rates");
       }
     } catch (error) {
-      console.error("Exchange rate fetch error:", error);
-      setState(prev => ({
-        ...prev,
-        isLoading: false,
-        error: (error as Error).message,
-      }));
+      try {
+        const response = await fetch(`https://api.frankfurter.app/latest?from=${encodeURIComponent(baseCurrency)}`);
+        if (!response.ok) {
+          throw new Error("Failed to fetch exchange rates");
+        }
+
+        const json = await response.json();
+        setState({
+          rates: { [baseCurrency]: 1, ...(json.rates || {}) },
+          base: baseCurrency,
+          isLoading: false,
+          error: null,
+          lastUpdated: new Date(),
+        });
+      } catch (fallbackError) {
+        setState(prev => ({
+          ...prev,
+          isLoading: false,
+          error: (fallbackError as Error).message,
+        }));
+      }
     }
   }, [baseCurrency]);
 
