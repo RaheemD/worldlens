@@ -24,6 +24,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import { toast } from "sonner";
 
+const overpassEndpoints = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.openstreetmap.ru/api/interpreter",
+  "https://overpass.nchc.org.tw/api/interpreter",
+];
+
 interface Place {
   icon: React.ElementType;
   name: string;
@@ -51,52 +58,64 @@ export default function Location() {
   const [hasFetched, setHasFetched] = useState(false);
   const hasFetchedInitial = useRef(false);
   const fetchInProgress = useRef(false);
+  const activeRequestRef = useRef<AbortController | null>(null);
+  const cacheRef = useRef<Map<string, { ts: number; data: { attractions: Place[]; food: Place[]; free: Place[]; services: Place[] } }>>(new Map());
 
   const fetchNearbyPlaces = useCallback(async (lat: number, lng: number) => {
-    // Prevent concurrent fetches
     if (fetchInProgress.current) return;
     fetchInProgress.current = true;
     setIsLoadingPlaces(true);
-    
+    const controller = new AbortController();
+    if (activeRequestRef.current) activeRequestRef.current.abort();
+    activeRequestRef.current = controller;
+    const radius = 1500;
+    const cacheKey = `${Math.round(lat * 1000) / 1000}:${Math.round(lng * 1000) / 1000}:${radius}`;
+    const cached = cacheRef.current.get(cacheKey);
+    if (cached && Date.now() - cached.ts < 60_000) {
+      setNearbyPlaces(cached.data);
+      setLastUpdated(new Date());
+      setHasFetched(true);
+      setIsLoadingPlaces(false);
+      fetchInProgress.current = false;
+      return;
+    }
+    const timeout = setTimeout(() => controller.abort(), 12_000);
     try {
-      // Use Overpass API to find nearby POIs
-      const radius = 1000; // 1km radius
-      const overpassQuery = `
-        [out:json][timeout:25];
+      const query = `
+        [out:json][timeout:12];
         (
-          node["tourism"~"museum|attraction|monument|artwork"](around:${radius},${lat},${lng});
-          node["amenity"~"restaurant|cafe|fast_food|bar"](around:${radius},${lat},${lng});
-          node["amenity"~"toilets|atm|pharmacy|police|hospital"](around:${radius},${lat},${lng});
-          node["leisure"~"park|garden"](around:${radius},${lat},${lng});
+          node["tourism"~"museum|attraction|monument|artwork|viewpoint"](around:${radius},${lat},${lng});
+          node["amenity"~"restaurant|cafe|fast_food|bar|pub"](around:${radius},${lat},${lng});
+          node["leisure"~"park|garden|playground|nature_reserve"](around:${radius},${lat},${lng});
+          node["shop"~"souvenir|convenience|supermarket"](around:${radius},${lat},${lng});
+          node["amenity"~"toilets|atm|pharmacy|police|hospital|drinking_water"](around:${radius},${lat},${lng});
           node["public_transport"="station"](around:${radius},${lat},${lng});
         );
         out body;
       `;
-
-      const response = await fetch("https://overpass-api.de/api/interpreter", {
-        method: "POST",
-        body: `data=${encodeURIComponent(overpassQuery)}`,
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch places");
+      let json: any = null;
+      for (const endpoint of overpassEndpoints) {
+        const res = await fetch(endpoint, {
+          method: "POST",
+          body: `data=${encodeURIComponent(query)}`,
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          signal: controller.signal,
+          cache: "no-store",
+        }).catch(() => null);
+        if (res && res.ok) {
+          json = await res.json();
+          break;
+        }
       }
-
-      const data = await response.json();
-      
       const attractions: Place[] = [];
       const food: Place[] = [];
       const free: Place[] = [];
       const services: Place[] = [];
-
-      data.elements.forEach((element: any) => {
+      const elements = json?.elements || [];
+      elements.forEach((element: any) => {
         const tags = element.tags || {};
         const name = tags.name || tags["name:en"] || "Unknown";
         const distance = calculateDistance(lat, lng, element.lat, element.lon);
-        
         const place: Place = {
           icon: Landmark,
           name,
@@ -105,20 +124,22 @@ export default function Location() {
           lat: element.lat,
           lng: element.lon,
         };
-
-        // Categorize places
         if (tags.tourism) {
           place.type = capitalizeFirst(tags.tourism);
           place.icon = Landmark;
           if (tags.tourism === "museum") place.icon = Building2;
           attractions.push(place);
-        } else if (tags.amenity === "restaurant" || tags.amenity === "cafe" || tags.amenity === "fast_food" || tags.amenity === "bar") {
+        } else if (tags.amenity === "restaurant" || tags.amenity === "cafe" || tags.amenity === "fast_food" || tags.amenity === "bar" || tags.amenity === "pub") {
           place.type = tags.cuisine ? capitalizeFirst(tags.cuisine.split(";")[0]) : capitalizeFirst(tags.amenity);
           place.icon = Utensils;
           food.push(place);
-        } else if (tags.leisure === "park" || tags.leisure === "garden") {
+        } else if (tags.leisure === "park" || tags.leisure === "garden" || tags.leisure === "playground" || tags.leisure === "nature_reserve") {
           place.type = capitalizeFirst(tags.leisure);
           place.icon = Sparkles;
+          free.push(place);
+        } else if (tags.shop === "souvenir" || tags.shop === "convenience" || tags.shop === "supermarket") {
+          place.type = capitalizeFirst(tags.shop);
+          place.icon = Ticket;
           free.push(place);
         } else if (tags.amenity) {
           const serviceMap: Record<string, { icon: React.ElementType; type: string }> = {
@@ -127,6 +148,7 @@ export default function Location() {
             pharmacy: { icon: Pill, type: "Pharmacy" },
             police: { icon: Shield, type: "Police" },
             hospital: { icon: Building2, type: "Hospital" },
+            drinking_water: { icon: Sparkles, type: "Water" },
           };
           const service = serviceMap[tags.amenity];
           if (service) {
@@ -136,29 +158,29 @@ export default function Location() {
           }
         } else if (tags.public_transport === "station") {
           place.icon = Bus;
-          place.type = tags.station || "Station";
+          place.type = "Station";
           services.push(place);
         }
       });
-
-      // Sort by distance and limit
-      setNearbyPlaces({
+      const formatted = {
         attractions: attractions.sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance)).slice(0, 10),
         food: food.sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance)).slice(0, 10),
         free: free.sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance)).slice(0, 10),
         services: services.sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance)).slice(0, 10),
-      });
+      };
+      setNearbyPlaces(formatted);
+      cacheRef.current.set(cacheKey, { ts: Date.now(), data: formatted });
       setLastUpdated(new Date());
       setHasFetched(true);
-    } catch (error) {
-      console.error("Error fetching places:", error);
-      // Only show error toast if we don't have any data yet
+    } catch {
       if (!hasFetched) {
-        toast.error("Failed to fetch nearby places");
+        toast.error("Nearby search is busy. Please try again.");
       }
     } finally {
+      clearTimeout(timeout);
       setIsLoadingPlaces(false);
       fetchInProgress.current = false;
+      if (activeRequestRef.current === controller) activeRequestRef.current = null;
     }
   }, [hasFetched]);
 
