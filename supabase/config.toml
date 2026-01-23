@@ -1,4 +1,4 @@
-project_id = "blsjehsiilmnvdacsaht"
+project_id = "dicnyexyxtfeqnbbfgks"
 
 [functions.analyze-image]
 verify_jwt = false
@@ -16,4 +16,7 @@ verify_jwt = true
 verify_jwt = false
 
 [functions.plan-trip]
+verify_jwt = false
+
+[functions.get-exchange-rates]
 verify_jwt = false
