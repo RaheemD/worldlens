@@ -167,7 +167,6 @@ export function AIUsageProvider({ children }: { children: React.ReactNode }) {
             .from("ai_usage")
             .insert({
               user_id: user.id,
-              session_id: sessionId,
               date: today,
               call_count: 1
             });
