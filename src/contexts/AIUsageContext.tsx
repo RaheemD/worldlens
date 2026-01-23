@@ -100,7 +100,6 @@ export function AIUsageProvider({ children }: { children: React.ReactNode }) {
             // Default to 0 on error so user can still use AI
             setUsageCount(0);
           } else {
-            console.log("AI usage fetched:", data);
             setUsageCount(data?.call_count || 0);
           }
         } catch (err) {
@@ -138,10 +137,8 @@ export function AIUsageProvider({ children }: { children: React.ReactNode }) {
         }
         
         const currentCount = existingData?.call_count || 0;
-        console.log("Current AI usage count:", currentCount, "Limit:", AUTHENTICATED_LIMIT);
         
         if (currentCount >= AUTHENTICATED_LIMIT) {
-          console.log("AI usage limit reached");
           return false;
         }
         
@@ -162,7 +159,6 @@ export function AIUsageProvider({ children }: { children: React.ReactNode }) {
           }
         } else {
           // Insert new record
-          console.log("Inserting new AI usage record for user:", user.id);
           const { error } = await supabase
             .from("ai_usage")
             .insert({
