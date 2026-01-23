@@ -286,49 +286,10 @@ export function HumanNeedsModal({ children }: HumanNeedsModalProps) {
     setSearchError(null);
     setResults([]);
 
-    try {
-      // Search for transportation hubs, main roads, and well-lit public areas
-      const overpassQuery = `
-        [out:json][timeout:10];
-        (
-          node["public_transport"="station"](around:2000,${latitude},${longitude});
-          node["railway"="station"](around:2000,${latitude},${longitude});
-          node["amenity"="bus_station"](around:2000,${latitude},${longitude});
-          node["highway"="bus_stop"](around:1000,${latitude},${longitude});
-          node["amenity"="taxi"](around:1000,${latitude},${longitude});
-        );
-        out body;
-      `;
-
-      const data = await runOverpassQuery(overpassQuery, 10_000);
-
-      const places: NearbyResult[] = data.elements
-        .map((el: any) => {
-          if (!el.lat || !el.lon) return null;
-          const name = el.tags?.name || el.tags?.["name:en"] || "Transport Hub";
-          const distance = calculateDistance(latitude, longitude, el.lat, el.lon);
-          return { name, distance, lat: el.lat, lng: el.lon };
-        })
-        .filter(Boolean)
-        .sort((a: NearbyResult, b: NearbyResult) => a.distance - b.distance)
-        .slice(0, 5);
-
-      setResults(places);
-
-      if (places.length === 0) {
-        // Fallback: open Google Maps with "transit stations near me"
-        const fallbackUrl = `https://www.google.com/maps/search/transit+station/@${latitude},${longitude},15z`;
-        window.open(fallbackUrl, "_blank");
-        setSearchError("Opening Google Maps to find transit options...");
-      }
-    } catch (err) {
-      // Fallback to Google Maps
-      const fallbackUrl = `https://www.google.com/maps/search/transit/@${latitude},${longitude},15z`;
-      window.open(fallbackUrl, "_blank");
-      setSearchError("Opening Google Maps to find transit options...");
-    } finally {
-      setIsSearching(false);
-    }
+    const fallbackUrl = `https://www.google.com/maps/search/transit+station/@${latitude},${longitude},15z`;
+    window.open(fallbackUrl, "_blank");
+    setSearchError("Opening Google Maps to find transit options...");
+    setIsSearching(false);
   };
 
   const handleNeedClick = (needType: NeedType) => {
