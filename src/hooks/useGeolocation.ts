@@ -35,31 +35,6 @@ export function useGeolocation(options: UseGeolocationOptions = {}) {
     maximumAge = 0,
   } = options;
 
-  const saveLastKnown = (lat: number, lng: number, locationName: string | null, countryCode: string | null, countryName: string | null) => {
-    try {
-      const payload = { lat, lng, locationName, countryCode, countryName, ts: Date.now() };
-      localStorage.setItem("worldlens_last_location", JSON.stringify(payload));
-    } catch {}
-  };
-
-  const loadLastKnown = (): { lat: number; lng: number; locationName: string | null; countryCode: string | null; countryName: string | null } | null => {
-    try {
-      const raw = localStorage.getItem("worldlens_last_location");
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      if (typeof parsed?.lat === "number" && typeof parsed?.lng === "number") {
-        return {
-          lat: parsed.lat,
-          lng: parsed.lng,
-          locationName: parsed.locationName || null,
-          countryCode: parsed.countryCode || null,
-          countryName: parsed.countryName || null,
-        };
-      }
-    } catch {}
-    return null;
-  };
-
   const getLocationInfo = async (lat: number, lng: number): Promise<{
     locationName: string | null;
     countryCode: string | null;
@@ -107,49 +82,6 @@ export function useGeolocation(options: UseGeolocationOptions = {}) {
     }
   };
 
-  const ipFallback = async () => {
-    try {
-      const res = await fetch("https://ipapi.co/json/");
-      if (!res.ok) throw new Error("IP geolocation failed");
-      const data = await res.json();
-      const lat = data.latitude;
-      const lng = data.longitude;
-      if (typeof lat !== "number" || typeof lng !== "number") throw new Error("No coordinates");
-      const { locationName, countryCode, countryName } = await getLocationInfo(lat, lng);
-      setState({
-        latitude: lat,
-        longitude: lng,
-        accuracy: null,
-        error: null,
-        isLoading: false,
-        locationName,
-        countryCode,
-        countryName,
-      });
-      saveLastKnown(lat, lng, locationName, countryCode, countryName);
-    } catch {
-      const last = loadLastKnown();
-      if (last) {
-        setState({
-          latitude: last.lat,
-          longitude: last.lng,
-          accuracy: null,
-          error: null,
-          isLoading: false,
-          locationName: last.locationName,
-          countryCode: last.countryCode,
-          countryName: last.countryName,
-        });
-      } else {
-        setState((prev) => ({
-          ...prev,
-          error: "Location unavailable",
-          isLoading: false,
-        }));
-      }
-    }
-  };
-
   const updatePosition = useCallback(async (position: GeolocationPosition) => {
     const { latitude, longitude, accuracy } = position.coords;
     
@@ -166,7 +98,6 @@ export function useGeolocation(options: UseGeolocationOptions = {}) {
       countryCode,
       countryName,
     });
-    saveLastKnown(latitude, longitude, locationName, countryCode, countryName);
   }, []);
 
   const handleError = useCallback((error: GeolocationPositionError) => {
@@ -186,14 +117,22 @@ export function useGeolocation(options: UseGeolocationOptions = {}) {
         errorMessage = "Unknown location error";
     }
     
-    ipFallback();
+    setState((prev) => ({
+      ...prev,
+      error: errorMessage,
+      isLoading: false,
+    }));
   }, []);
 
   const refresh = useCallback(() => {
     setState((prev) => ({ ...prev, isLoading: true, error: null }));
     
     if (!navigator.geolocation) {
-      ipFallback();
+      setState((prev) => ({
+        ...prev,
+        error: "Geolocation not supported",
+        isLoading: false,
+      }));
       return;
     }
 
@@ -206,7 +145,11 @@ export function useGeolocation(options: UseGeolocationOptions = {}) {
 
   useEffect(() => {
     if (!navigator.geolocation) {
-      ipFallback();
+      setState((prev) => ({
+        ...prev,
+        error: "Geolocation not supported",
+        isLoading: false,
+      }));
       return;
     }
 
