@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Camera, MapPin, AlertTriangle, HelpCircle, Loader2 } from "lucide-react";
+import { Camera, MapPin, AlertTriangle, HelpCircle, Loader2, RefreshCw } from "lucide-react";
 import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { AnimatedPage, fadeInUp, staggerContainer } from "@/components/AnimatedPage";
@@ -23,7 +23,10 @@ interface ScanEntry {
 
 export default function Home() {
   const navigate = useNavigate();
-  const { locationName, isLoading: locationLoading, error: locationError } = useGeolocation();
+  const { locationName, isLoading: locationLoading, error: locationError, refresh } = useGeolocation({
+    autoRequest: "once-per-session",
+    watch: false,
+  });
   const { user } = useAuth();
   const [recentScans, setRecentScans] = useState<ScanEntry[]>([]);
   const [scansLoading, setScansLoading] = useState(false);
@@ -102,13 +105,31 @@ export default function Home() {
           </motion.div>
 
           {/* Quick Stats */}
-          <motion.div className="flex gap-2 justify-center" variants={fadeInUp}>
+          <motion.div className="flex gap-2 justify-center items-center" variants={fadeInUp}>
             <StatusBadge variant="success" icon={<span className="w-1.5 h-1.5 rounded-full bg-success" />}>
               Safe Area
             </StatusBadge>
-            <StatusBadge variant="info" icon={locationLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <span className="w-1.5 h-1.5 rounded-full bg-info" />}>
-              {locationLoading ? "Locating..." : locationError ? "Location unavailable" : locationName || "Unknown"}
-            </StatusBadge>
+            <div className="flex items-center gap-1">
+              <StatusBadge variant="info" icon={locationLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <span className="w-1.5 h-1.5 rounded-full bg-info" />}>
+                {locationLoading ? "Locating..." : locationError ? "Location unavailable" : locationName || "Unknown"}
+              </StatusBadge>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 rounded-full"
+                onClick={refresh}
+                disabled={locationLoading}
+                aria-label="Refresh location"
+                title="Refresh location"
+              >
+                {locationLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
           </motion.div>
 
           {/* Safety Alert (if any) */}
