@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Receipt, Camera, Plus, TrendingUp, Loader2, LogIn, FileText } from "lucide-react";
+import { Receipt, Camera, Plus, TrendingUp, Loader2, LogIn, FileText, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { AnimatedPage, fadeInUp, staggerContainer } from "@/components/AnimatedPage";
@@ -33,7 +33,7 @@ import {
 import { ExpenseReportDialog } from "@/components/spending/ExpenseReportDialog";
 import { CurrencyConverter } from "@/components/spending/CurrencyConverter";
 
-interface SpendingRecord {
+interface SpendingRecordBase {
   id: string;
   amount: number;
   currency: string;
@@ -43,6 +43,27 @@ interface SpendingRecord {
   date: string;
   notes: string | null;
   created_at: string;
+  scan_entry_id?: string | null;
+}
+
+interface SpendingRecord extends SpendingRecordBase {
+  trip_id: string | null;
+  trip_name: string | null;
+}
+
+interface SpendingRecordRow extends SpendingRecordBase {
+  scan_entries?: {
+    trip_id: string | null;
+    trips?: { name: string | null } | null;
+  } | null;
+}
+
+interface Trip {
+  id: string;
+  name: string;
+  destination: string | null;
+  start_date: string | null;
+  end_date: string | null;
 }
 
 const categoryColors: Record<string, "success" | "info" | "primary" | "warning" | "default"> = {
@@ -68,6 +89,8 @@ export default function Spending() {
   const showConversion = localCurrency !== homeCurrency && !isUsingLocationCurrency;
   
   const [spending, setSpending] = useState<SpendingRecord[]>([]);
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [selectedTrip, setSelectedTrip] = useState("all");
   const [isLoading, setIsLoading] = useState(true);
   const [isScanning, setIsScanning] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -80,6 +103,7 @@ export default function Spending() {
   useEffect(() => {
     if (user) {
       fetchSpending();
+      fetchTrips();
     } else {
       setIsLoading(false);
     }
@@ -90,12 +114,17 @@ export default function Spending() {
     try {
       const { data, error } = await supabase
         .from("spending_records")
-        .select("*")
+        .select("*, scan_entries(trip_id, trips(name))")
         .order("date", { ascending: false })
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setSpending(data || []);
+      const mapped = (data as SpendingRecordRow[] | null)?.map((record) => ({
+        ...record,
+        trip_id: record.scan_entries?.trip_id ?? null,
+        trip_name: record.scan_entries?.trips?.name ?? null,
+      })) || [];
+      setSpending(mapped);
     } catch (error) {
       console.error("Error fetching spending:", error);
       toast.error("Failed to load spending data");
@@ -104,20 +133,39 @@ export default function Spending() {
     }
   };
 
+  const fetchTrips = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("trips")
+        .select("id, name, destination, start_date, end_date")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      setTrips(data || []);
+    } catch (error) {
+      console.error("Error fetching trips:", error);
+    }
+  };
+
+  const filteredSpending = selectedTrip === "all"
+    ? spending
+    : selectedTrip === "unassigned"
+      ? spending.filter((s) => !s.trip_id)
+      : spending.filter((s) => s.trip_id === selectedTrip);
+
   const today = new Date().toISOString().split("T")[0];
-  const totalToday = spending
+  const totalToday = filteredSpending
     .filter((s) => s.date === today)
     .reduce((sum, s) => sum + Number(s.amount), 0);
 
-  const totalTrip = spending.reduce((sum, s) => sum + Number(s.amount), 0);
+  const totalTrip = filteredSpending.reduce((sum, s) => sum + Number(s.amount), 0);
 
-  const categoryTotals = spending.reduce((acc, s) => {
+  const categoryTotals = filteredSpending.reduce((acc, s) => {
     acc[s.category] = (acc[s.category] || 0) + Number(s.amount);
     return acc;
   }, {} as Record<string, number>);
 
   // Get the primary currency from spending records or user preference
-  const primaryCurrency = spending[0]?.currency || activeCurrency;
+  const primaryCurrency = filteredSpending[0]?.currency || activeCurrency;
   const symbol = getSymbol(primaryCurrency);
 
   const handleScanReceipt = async () => {
@@ -228,6 +276,20 @@ export default function Spending() {
     }
   };
 
+  const deleteEntry = async (id: string) => {
+    const previous = spending;
+    setSpending((prev) => prev.filter((item) => item.id !== id));
+    try {
+      const { error } = await supabase.from("spending_records").delete().eq("id", id);
+      if (error) throw error;
+      toast.success("Entry deleted");
+    } catch (err) {
+      setSpending(previous);
+      console.error("Delete entry error:", err);
+      toast.error("Failed to delete entry");
+    }
+  };
+
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     if (dateStr === today) return "Today";
@@ -320,7 +382,9 @@ export default function Spending() {
               className="bg-card rounded-2xl p-4 border border-border/50"
               whileHover={{ scale: 1.02 }}
             >
-              <p className="text-xs text-muted-foreground">This Trip</p>
+              <p className="text-xs text-muted-foreground">
+                {selectedTrip === "all" ? "All Trips" : selectedTrip === "unassigned" ? "Unassigned" : "Selected Trip"}
+              </p>
               <p className="text-2xl font-bold">{symbol}{totalTrip.toLocaleString()}</p>
               {showConversion && !ratesLoading && (
                 <p className="text-xs text-muted-foreground/70 mt-0.5">
@@ -392,6 +456,7 @@ export default function Spending() {
             <motion.div variants={fadeInUp}>
               <ExpenseReportDialog
                 spending={spending}
+                trips={trips}
                 getSymbol={getSymbol}
                 trigger={
                   <Button variant="outline" className="w-full gap-2">
@@ -406,60 +471,80 @@ export default function Spending() {
           <motion.div className="space-y-3" variants={fadeInUp}>
             <div className="flex items-center justify-between">
               <h2 className="font-semibold text-lg">Recent</h2>
-              <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="ghost" size="sm" className="text-primary">
-                    <Plus className="h-4 w-4 mr-1" />
-                    Add Manual
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="bg-card border-border">
-                  <DialogHeader>
-                    <DialogTitle>Add Expense</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4 pt-4">
-                    <Input
-                      type="number"
-                      placeholder={`Amount (${symbol})`}
-                      value={newAmount}
-                      onChange={(e) => setNewAmount(e.target.value)}
-                      className="bg-background"
-                    />
-                    <Select value={newCategory} onValueChange={setNewCategory}>
-                      <SelectTrigger className="bg-background">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {categories.map((cat) => (
-                          <SelectItem key={cat} value={cat}>
-                            {cat}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Input
-                      placeholder="Merchant (optional)"
-                      value={newMerchant}
-                      onChange={(e) => setNewMerchant(e.target.value)}
-                      className="bg-background"
-                    />
-                    <Button
-                      onClick={addManualEntry}
-                      disabled={isAdding}
-                      className="w-full bg-primary text-primary-foreground"
-                    >
-                      {isAdding ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        "Add Expense"
+              <div className="flex items-center gap-2">
+                {(trips.length > 0 || spending.some((item) => !item.trip_id)) && (
+                  <Select value={selectedTrip} onValueChange={setSelectedTrip}>
+                    <SelectTrigger className="h-8 w-[160px]">
+                      <SelectValue placeholder="All Trips" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Trips</SelectItem>
+                      {spending.some((item) => !item.trip_id) && (
+                        <SelectItem value="unassigned">Unassigned</SelectItem>
                       )}
+                      {trips.map((trip) => (
+                        <SelectItem key={trip.id} value={trip.id}>
+                          {trip.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="ghost" size="sm" className="text-primary">
+                      <Plus className="h-4 w-4 mr-1" />
+                      Add Manual
                     </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
+                  </DialogTrigger>
+                  <DialogContent className="bg-card border-border">
+                    <DialogHeader>
+                      <DialogTitle>Add Expense</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 pt-4">
+                      <Input
+                        type="number"
+                        placeholder={`Amount (${symbol})`}
+                        value={newAmount}
+                        onChange={(e) => setNewAmount(e.target.value)}
+                        className="bg-background"
+                      />
+                      <Select value={newCategory} onValueChange={setNewCategory}>
+                        <SelectTrigger className="bg-background">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {categories.map((cat) => (
+                            <SelectItem key={cat} value={cat}>
+                              {cat}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        placeholder="Merchant (optional)"
+                        value={newMerchant}
+                        onChange={(e) => setNewMerchant(e.target.value)}
+                        className="bg-background"
+                      />
+                      <Button
+                        onClick={addManualEntry}
+                        disabled={isAdding}
+                        className="w-full bg-primary text-primary-foreground"
+                      >
+                        {isAdding ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          "Add Expense"
+                        )}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
             </div>
 
-            {spending.length === 0 ? (
+            {filteredSpending.length === 0 ? (
               <motion.div 
                 className="text-center py-8 text-muted-foreground"
                 initial={{ opacity: 0 }}
@@ -469,7 +554,7 @@ export default function Spending() {
                 <p>No spending recorded yet</p>
               </motion.div>
             ) : (
-              spending.map((item, i) => (
+              filteredSpending.map((item, i) => (
                 <motion.div
                   key={item.id}
                   initial={{ opacity: 0, y: 20 }}
@@ -486,6 +571,17 @@ export default function Spending() {
                         <StatusBadge variant={categoryColors[item.category] || "default"}>
                           {item.category}
                         </StatusBadge>
+                        <StatusBadge variant={item.trip_id ? "info" : "default"}>
+                          {item.trip_name || "No Trip"}
+                        </StatusBadge>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8"
+                          onClick={() => deleteEntry(item.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
                       </div>
                     }
                   />
