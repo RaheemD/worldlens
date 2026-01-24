@@ -35,6 +35,8 @@ interface SpendingRecord {
   location_name: string | null;
   date: string;
   notes: string | null;
+  trip_id: string | null;
+  trip_name: string | null;
 }
 
 interface Trip {
@@ -72,9 +74,13 @@ export function ExpenseReportDialog({
   const [selectedTrip, setSelectedTrip] = useState<string>("all");
   const chartRef = useRef<HTMLDivElement>(null);
 
-  const filteredSpending = selectedTrip === "all" 
-    ? spending 
-    : spending; // For now, show all - trip linking would require spending_records.trip_id
+  const filteredSpending = selectedTrip === "all"
+    ? spending
+    : selectedTrip === "unassigned"
+      ? spending.filter((s) => !s.trip_id)
+      : spending.filter((s) => s.trip_id === selectedTrip);
+
+  const hasUnassigned = spending.some((s) => !s.trip_id);
 
   const categoryTotals = filteredSpending.reduce((acc, s) => {
     acc[s.category] = (acc[s.category] || 0) + Number(s.amount);
@@ -234,7 +240,7 @@ export function ExpenseReportDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          {trips.length > 0 && (
+          {(trips.length > 0 || hasUnassigned) && (
             <div className="space-y-2">
               <label className="text-sm font-medium">Filter by Trip</label>
               <Select value={selectedTrip} onValueChange={setSelectedTrip}>
@@ -243,6 +249,9 @@ export function ExpenseReportDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Spending</SelectItem>
+                  {hasUnassigned && (
+                    <SelectItem value="unassigned">Unassigned</SelectItem>
+                  )}
                   {trips.map((trip) => (
                     <SelectItem key={trip.id} value={trip.id}>
                       {trip.name}
