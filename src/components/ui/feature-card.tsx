@@ -26,7 +26,7 @@ export interface FeatureCardProps
     VariantProps<typeof featureCardVariants> {
   icon?: React.ReactNode;
   title: string;
-  subtitle?: string;
+  subtitle?: React.ReactNode;
   action?: React.ReactNode;
 }
 
@@ -46,7 +46,7 @@ const FeatureCard = React.forwardRef<HTMLDivElement, FeatureCardProps>(
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-foreground truncate">{title}</h3>
           {subtitle && (
-            <p className="text-sm text-muted-foreground truncate">{subtitle}</p>
+            <div className="text-sm text-muted-foreground truncate">{subtitle}</div>
           )}
         </div>
         {action && <div className="shrink-0">{action}</div>}
