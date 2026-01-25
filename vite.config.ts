@@ -19,8 +19,8 @@ export default defineConfig(({ mode }) => ({
       devOptions: { enabled: true },
       includeAssets: ["favicon.svg", "robots.txt"],
       manifest: {
-        name: "Wanderlens - AI Travel Companion",
-        short_name: "Wanderlens",
+        name: "WorldLens - AI Travel Companion",
+        short_name: "WorldLens",
         description: "Your AI-powered travel companion for scanning, translating, and exploring",
         theme_color: "#8b5cf6",
         background_color: "#0a0a0a",
