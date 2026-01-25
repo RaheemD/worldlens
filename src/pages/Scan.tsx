@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Camera, X, Zap, Loader2, Save, Star, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Camera, X, Zap, Loader2, Save, Star, AlertCircle, CheckCircle2, Image as ImageIcon } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { AnimatedPage, fadeInUp, staggerContainer } from "@/components/AnimatedPage";
 import { Button } from "@/components/ui/button";
@@ -50,6 +50,7 @@ export default function Scan() {
   const [translateText, setTranslateText] = useState<string>("");
   const [showTranslate, setShowTranslate] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (user) {
@@ -75,6 +76,18 @@ export default function Scan() {
       return;
     }
     fileInputRef.current?.click();
+  };
+
+  const handleUpload = () => {
+    if (!canUseAI) {
+      toast.error(
+        isAuthenticated 
+          ? "Daily AI limit reached. Try again tomorrow!" 
+          : "Daily limit reached. Sign in for more AI calls!"
+      );
+      return;
+    }
+    galleryInputRef.current?.click();
   };
 
   const compressImage = (file: File, maxWidth = 1024, quality = 0.8): Promise<string> => {
@@ -194,7 +207,7 @@ export default function Scan() {
         prices: result.prices ? JSON.parse(JSON.stringify(result.prices)) : null,
         warnings: result.warnings || [],
         tips: result.tips || [],
-        trip_id: selectedTripId || null,
+        trip_id: selectedTripId === "none" ? null : selectedTripId,
       }]);
 
       if (error) throw error;
@@ -227,6 +240,13 @@ export default function Scan() {
           type="file"
           accept="image/*"
           capture="environment"
+          className="hidden"
+          onChange={handleFileChange}
+        />
+        <input
+          ref={galleryInputRef}
+          type="file"
+          accept="image/*"
           className="hidden"
           onChange={handleFileChange}
         />
@@ -291,8 +311,25 @@ export default function Scan() {
               </motion.div>
             )}
 
-            {/* Capture Button */}
-            <motion.div className="p-6 flex justify-center" variants={fadeInUp}>
+            {/* Capture Controls */}
+            <motion.div className="p-6 flex items-center justify-center gap-8" variants={fadeInUp}>
+              {/* Upload Button */}
+              <motion.button
+                onClick={handleUpload}
+                className={`h-14 w-14 rounded-full flex items-center justify-center border border-border/50 active:scale-95 transition-transform ${
+                  canUseAI
+                    ? "bg-card/80 backdrop-blur-sm hover:bg-card"
+                    : "bg-muted cursor-not-allowed"
+                }`}
+                whileHover={{ scale: canUseAI ? 1.05 : 1 }}
+                whileTap={{ scale: canUseAI ? 0.95 : 1 }}
+                disabled={!canUseAI}
+                title="Upload from Gallery"
+              >
+                <ImageIcon className={`h-6 w-6 ${canUseAI ? "text-foreground" : "text-muted-foreground"}`} />
+              </motion.button>
+
+              {/* Camera Button */}
               <motion.button
                 onClick={handleCapture}
                 className={`relative h-20 w-20 rounded-full flex items-center justify-center active:scale-95 transition-transform ${
@@ -312,6 +349,9 @@ export default function Scan() {
                   <div className="absolute inset-0 rounded-full border-2 border-primary animate-pulse-ring" />
                 )}
               </motion.button>
+
+              {/* Placeholder to balance layout (invisible) */}
+              <div className="w-14" />
             </motion.div>
 
             {/* Quick Tips */}
@@ -387,7 +427,7 @@ export default function Scan() {
                               <SelectValue placeholder="Add to trip (optional)" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="">No trip</SelectItem>
+                              <SelectItem value="none">No trip</SelectItem>
                               {trips.map((trip) => (
                                 <SelectItem key={trip.id} value={trip.id}>
                                   {trip.name}
