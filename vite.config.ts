@@ -16,6 +16,7 @@ export default defineConfig(({ mode }) => ({
     react(),
     VitePWA({
       registerType: "autoUpdate",
+      devOptions: { enabled: true },
       includeAssets: ["favicon.svg", "robots.txt"],
       manifest: {
         name: "Wanderlens - AI Travel Companion",
