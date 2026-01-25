@@ -1,20 +1,21 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { 
-  Landmark, 
-  Utensils, 
-  Sparkles, 
-  Ticket, 
-  Bath, 
-  Landmark as Bank, 
-  Pill, 
-  Shield, 
-  Building2, 
-  Bus, 
+import {
+  Landmark,
+  Utensils,
+  Sparkles,
+  Ticket,
+  Bath,
+  Landmark as Bank,
+  Pill,
+  Shield,
+  Building2,
+  Bus,
   Car,
   Loader2,
   MapPin,
   AlertCircle,
-  Navigation
+  Navigation,
+  Scissors
 } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { FeatureCard } from "@/components/ui/feature-card";
@@ -24,20 +25,23 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import { toast } from "sonner";
 
-const overpassEndpoints = [
-  "https://overpass-api.de/api/interpreter",
-  "https://overpass.kumi.systems/api/interpreter",
-  "https://overpass.openstreetmap.ru/api/interpreter",
-  "https://overpass.nchc.org.tw/api/interpreter",
-];
+const TOMTOM_API_KEY = "CSVnjjusSujTgcDTDvy4HHUs1hTSwkAR";
 
-interface Element {
-  type: string;
-  id: number;
-  lat?: number;
-  lon?: number;
-  center?: { lat: number; lon: number };
-  tags?: Record<string, string>;
+interface TomTomPOI {
+  id: string;
+  poi: {
+    name: string;
+    categories: string[];
+    classifications: Array<{
+      code: string;
+      names: Array<{ name: string }>;
+    }>;
+  };
+  dist: number;
+  position: {
+    lat: number;
+    lon: number;
+  };
 }
 
 interface Place {
@@ -70,6 +74,73 @@ export default function Location() {
   const activeRequestRef = useRef<AbortController | null>(null);
   const cacheRef = useRef<Map<string, { ts: number; data: { attractions: Place[]; food: Place[]; free: Place[]; services: Place[] } }>>(new Map());
 
+  const getCategoryIcon = (categoryCode: string): React.ElementType => {
+    switch (categoryCode) {
+      // Food
+      case "RESTAURANT": return Utensils;
+      case "CAFE": return Utensils;
+      case "BAR": return Utensils;
+      case "PUB": return Utensils;
+
+
+      // Services
+      case "ATM": return Bank;
+      case "BANK": return Bank;
+      case "PHARMACY": return Pill;
+      case "HOSPITAL": return Building2;
+      case "POLICE_STATION": return Shield;
+      case "POST_OFFICE": return Building2;
+      case "PETROL_STATION": return Car;
+      case "PARKING_GARAGE": return Car;
+      case "PUBLIC_TRANSPORT_STOP": return Bus;
+      case "RAILROAD_STATION": return Bus;
+      case "TRAIN_STATION": return Bus;
+      case "PLACE_OF_WORSHIP": return Landmark;
+      case "BEAUTY_SALON": return Scissors;
+      case "HAIRDRESSER": return Scissors;
+      case "DRY_CLEANER": return Sparkles;
+
+      // Attractions
+      case "MUSEUM": return Building2;
+      case "MONUMENT": return Landmark;
+      case "ZOO": return Sparkles;
+      case "AMUSEMENT_PARK": return Ticket;
+      case "STADIUM": return Ticket;
+      case "TOURIST_ATTRACTION": return Landmark;
+      case "WILDLIFE_PARK": return Sparkles;
+      case "NATURE_RESERVE": return Sparkles;
+
+      // Free/Nature
+      case "PARK": return Sparkles;
+      case "BEACH": return Sparkles;
+
+      default: return MapPin;
+    }
+  };
+
+  const mapTomTomToPlace = (item: TomTomPOI): Place => {
+    const classification = item.poi.classifications[0];
+    const categoryCode = classification?.code || "UNKNOWN";
+    const typeName = classification?.names[0]?.name || item.poi.categories[0] || "Place";
+
+    return {
+      name: item.poi.name,
+      distance: formatDistance(item.dist),
+      type: capitalizeFirst(typeName),
+      lat: item.position.lat,
+      lng: item.position.lon,
+      icon: getCategoryIcon(categoryCode),
+    };
+  };
+
+  const fetchCategory = async (lat: number, lng: number, categorySet: string, radius: number, signal: AbortSignal) => {
+    const url = `https://api.tomtom.com/search/2/nearbySearch/.json?key=${TOMTOM_API_KEY}&lat=${lat}&lon=${lng}&radius=${radius}&limit=50&categorySet=${categorySet}`;
+    const res = await fetch(url, { signal });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.results || []).map(mapTomTomToPlace);
+  };
+
   const fetchNearbyPlaces = useCallback(async (lat: number, lng: number, options?: { force?: boolean }) => {
     if (fetchInProgress.current) return;
     fetchInProgress.current = true;
@@ -77,8 +148,10 @@ export default function Location() {
     const controller = new AbortController();
     if (activeRequestRef.current) activeRequestRef.current.abort();
     activeRequestRef.current = controller;
-    const radius = 1500;
-    const cacheKey = `${Math.round(lat * 1000) / 1000}:${Math.round(lng * 1000) / 1000}:${radius}`;
+
+    // Cache key based on lat/lng
+    const cacheKey = `${Math.round(lat * 1000) / 1000}:${Math.round(lng * 1000) / 1000}`;
+
     if (!options?.force) {
       const cached = cacheRef.current.get(cacheKey);
       if (cached && Date.now() - cached.ts < 60_000) {
@@ -90,198 +163,156 @@ export default function Location() {
         return;
       }
     }
-    const timeout = setTimeout(() => controller.abort(), 12_000);
+
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+
     try {
-      // Production grade query with specific radii and strict categories
-      const query = `
-        [out:json][timeout:25];
-        (
-          // Food: 2000m - nwr for better coverage
-          nwr["amenity"~"restaurant|cafe|fast_food|food_court|bar|pub|ice_cream|street_food"](around:2000,${lat},${lng});
-          nwr["shop"~"bakery|pastry|confectionery|sweets|greengrocer"](around:2000,${lat},${lng});
+      // TomTom Category IDs
+      const CATEGORIES = {
+        attractions: "7376,7317,9927,7302,9902", // Tourist Attraction, Museum, Wildlife Parks (includes National Parks), Trails, Amusement Parks
+        food: "7315,9376,9379,7311", // Restaurant, Cafe, Bar, Pub
+        services: "7397,7326,7321,7322,7313,7311,9361067,9361027,9361010", // ATM, Pharmacy, Hospital, Police, Parking, Gas Station, Salon, Hairdresser, Dry Cleaner
+        free: "9357,9362,7339,7373" // Beach, Parks, Places of Worship, Shopping Centers
+      };
 
-          // Services: 1km - upgraded to nwr to catch ATMs/Banks mapped as ways/relations
-          nwr["amenity"~"atm|pharmacy|hospital|police|taxi|fuel|parking|toilets|bus_station"](around:1000,${lat},${lng});
-          nwr["highway"="bus_stop"](around:1000,${lat},${lng});
-          nwr["public_transport"="station"](around:1000,${lat},${lng});
-          nwr["railway"~"station|subway_entrance"](around:1000,${lat},${lng});
+      // Batch 1: High Priority (Attractions & Transport)
+      const [attractions, transport] = await Promise.all([
+        fetchCategory(lat, lng, CATEGORIES.attractions, 5000, controller.signal),
+        fetchCategory(lat, lng, "7380,7380004,7380005,9942,7324", 5000, controller.signal), // Transport: Railroad, Urban, Subway, Public Transport, Railway
+      ]);
 
-          // Attractions: 5km
-          node["tourism"~"attraction|museum|gallery|viewpoint"](around:5000,${lat},${lng});
-          node["leisure"="park"](around:5000,${lat},${lng});
-          node["historic"="monument"](around:5000,${lat},${lng});
-          node["amenity"~"place_of_worship|public_square"](around:5000,${lat},${lng});
+      // Small delay to prevent 429 (Too Many Requests)
+      await new Promise(resolve => setTimeout(resolve, 300));
 
-          // Free-specific candidates: 3km (Expanded from 1km)
-          node["leisure"~"park|beach|common"](around:3000,${lat},${lng});
-          node["tourism"="viewpoint"](around:3000,${lat},${lng});
-          node["amenity"="public_square"](around:3000,${lat},${lng});
-        );
-        out body center;
-      `;
-      let json: { elements?: Element[] } | null = null;
-      for (const endpoint of overpassEndpoints) {
-        const res = await fetch(endpoint, {
-          method: "POST",
-          body: `data=${encodeURIComponent(query)}`,
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          signal: controller.signal,
-          cache: "no-store",
-        }).catch(() => null);
-        if (res && res.ok) {
-          json = await res.json();
-          break;
-        }
-      }
-      const attractions: Place[] = [];
-      const food: Place[] = [];
-      const free: Place[] = [];
-      const services: Place[] = [];
-      const elements = json?.elements || [];
-      
-      // Use a Set to track processed IDs to avoid duplicates across categories
-      const processedIds = new Set<number>();
-      const processedFoodIds = new Set<string>();
+      // Batch 2: Secondary (Food, Services, Free)
+      const [food, services, free] = await Promise.all([
+        fetchCategory(lat, lng, CATEGORIES.food, 2000, controller.signal),
+        fetchCategory(lat, lng, CATEGORIES.services, 2500, controller.signal),
+        fetchCategory(lat, lng, CATEGORIES.free, 3000, controller.signal),
+      ]);
 
-      elements.forEach((element: Element) => {
-        const tags = element.tags || {};
-        const name = tags.name || tags["name:en"] || tags["brand"] || "Unknown";
-        
-        const elementLat = element.lat ?? element.center?.lat;
-        const elementLon = element.lon ?? element.center?.lon;
-        
-        if (!elementLat || !elementLon) return;
+      // Merge all services for processing (personal care is now inside services)
+      const allServices = [...services, ...transport];
 
-        const distanceMeters = calculateDistance(lat, lng, elementLat, elementLon);
-        
-        const place: Place = {
-          icon: Landmark,
-          name,
-          distance: formatDistance(distanceMeters),
-          type: "",
-          lat: elementLat,
-          lng: elementLon,
-        };
+      // Debug: Log transport services only
+      console.log("🚇 TRANSPORT DATA RETURNED:");
+      console.table(transport.map(s => ({ name: s.name, type: s.type, distance: s.distance })));
 
-        // --- Food Categorization (2000m) ---
-        if (distanceMeters <= 2000) {
-          const foodKey = `${element.type}:${element.id}`;
-          const isNamedFoodPlace = name !== "Unknown";
-          if (tags.amenity && ["restaurant", "cafe", "fast_food", "food_court", "bar", "pub", "ice_cream", "street_food"].includes(tags.amenity)) {
-            place.type = formatFoodType(tags);
-            place.icon = Utensils;
-            if (isNamedFoodPlace && !processedFoodIds.has(foodKey)) {
-              processedFoodIds.add(foodKey);
-              food.push(place);
-            }
-          } else if (tags.shop && ["bakery", "pastry", "confectionery", "sweets", "greengrocer"].includes(tags.shop)) {
-            place.type = formatShopType(tags.shop);
-            place.icon = Utensils;
-            if (isNamedFoodPlace && !processedFoodIds.has(foodKey)) {
-              processedFoodIds.add(foodKey);
-              food.push(place);
-            }
-          }
-        }
+      // Smart sorting for attractions - prioritize major tourist destinations
+      const priorityKeywords = ['national park', 'wildlife', 'sanctuary', 'museum', 'monument', 'fort', 'palace', 'cathedral', 'basilica', 'garden', 'zoo', 'aquarium', 'sanjay gandhi'];
+      const sortAttractions = (places: Place[]) => {
+        return places.sort((a, b) => {
+          const aName = a.name.toLowerCase();
+          const bName = b.name.toLowerCase();
+          const aPriority = priorityKeywords.some(keyword => aName.includes(keyword));
+          const bPriority = priorityKeywords.some(keyword => bName.includes(keyword));
 
-        // --- Services Categorization (1km) ---
-        if (distanceMeters <= 1000) {
-          if (tags.amenity && ["atm", "pharmacy", "hospital", "police", "taxi", "fuel", "parking", "toilets", "bus_station"].includes(tags.amenity)) {
-            const info = getServiceInfo(tags.amenity);
-            place.type = info.type;
-            place.icon = info.icon;
-            services.push(place);
-          } else if (tags.highway === "bus_stop" || tags.public_transport === "station" || tags.railway === "station" || tags.railway === "subway_entrance") {
-             const type = tags.railway === "subway_entrance" ? "Metro Entrance" : 
-                          tags.railway === "station" ? "Metro Station" : 
-                          tags.public_transport === "station" ? "Bus Station" : "Bus Stop";
-             place.type = type;
-             place.icon = Bus;
-             services.push(place);
-          }
-        }
+          // If one has priority and the other doesn't, prioritize it
+          if (aPriority && !bPriority) return -1;
+          if (!aPriority && bPriority) return 1;
 
-        // --- Attractions Categorization (5km) ---
-        if (distanceMeters <= 5000) {
-           if (tags.tourism && ["attraction", "museum", "gallery", "viewpoint"].includes(tags.tourism)) {
-             place.type = formatTourismType(tags.tourism);
-             place.icon = tags.tourism === "museum" ? Building2 : Landmark;
-             attractions.push(place);
-           } else if (tags.leisure === "park") {
-             place.type = "Park";
-             place.icon = Sparkles;
-             attractions.push(place);
-           } else if (tags.historic === "monument") {
-             place.type = "Monument";
-             place.icon = Landmark;
-             attractions.push(place);
-           } else if (tags.amenity === "place_of_worship") {
-             // Distinguish temple, church, mosque if possible, else generic
-             place.type = "Place of Worship"; 
-             if (tags.religion) place.type = capitalizeFirst(tags.religion); // e.g. "Christian" -> Church? "Muslim" -> Mosque?
-             // Simple mapping based on tags if available, or just generic
-             place.icon = Landmark;
-             attractions.push(place);
-           }
-        }
+          // Otherwise sort by distance
+          return parseFloat(a.distance) - parseFloat(b.distance);
+        });
+      };
 
-        // --- Free Categorization (3km) ---
-        // Auto-assign if: category = park OR viewpoint OR beach OR public_square OR price info is missing or = 0
-        if (distanceMeters <= 3000) {
-          let isFreeCandidate = false;
-          let freeType = "";
-          let freeIcon = Sparkles;
-
-          // 1. Check specific categories
-          if (tags.leisure === "park") { isFreeCandidate = true; freeType = "Park"; }
-          else if (tags.tourism === "viewpoint") { isFreeCandidate = true; freeType = "Viewpoint"; freeIcon = Landmark; }
-          else if (tags.leisure === "beach" || tags.natural === "beach") { isFreeCandidate = true; freeType = "Beach"; }
-          else if (tags.amenity === "public_square" || tags.place === "square") { isFreeCandidate = true; freeType = "Public Square"; freeIcon = Landmark; }
-          
-          // 2. Check generic "free" condition (missing fee or fee=no/0) for OTHER items found
-          if (!isFreeCandidate) {
-            // Check if it was already categorized as Attraction/Food/Service?
-            // User's rule "Auto-assign if... OR price info is missing" is very broad.
-            // Let's restrict it to "Attractions" that are free. We don't want "McDonalds" in Free just because it has no fee tag.
-            // So, if it's an Attraction (museum, gallery, monument, place_of_worship) AND (fee is missing or no)
-            const isAttractionType = (tags.tourism && ["attraction", "museum", "gallery", "viewpoint"].includes(tags.tourism)) ||
-                                     (tags.historic === "monument") ||
-                                     (tags.amenity === "place_of_worship");
-            
-            if (isAttractionType) {
-               const fee = tags.fee || tags.charge;
-               if (!fee || fee === "no" || fee === "0") {
-                 isFreeCandidate = true;
-                 // Reuse the type logic
-                 if (tags.tourism) freeType = formatTourismType(tags.tourism);
-                 else if (tags.historic) freeType = "Monument";
-                 else if (tags.amenity === "place_of_worship") freeType = "Place of Worship";
-                 freeIcon = Landmark;
-               }
-            }
-          }
-
-          if (isFreeCandidate) {
-            // Create a copy for the Free list
-            const freePlace = { ...place, type: freeType || place.type, icon: freeIcon };
-            free.push(freePlace);
-          }
-        }
+      // Filter out only cemeteries from free category
+      const filteredFree = free.filter(place => {
+        const name = place.name.toLowerCase();
+        return !name.includes('cemetery') && !name.includes('graveyard');
       });
 
+      // Categorize free places for diversity
+      const worshipKeywords = ['temple', 'mandir', 'church', 'mosque', 'masjid', 'gurudwara', 'synagogue', 'shrine', 'cathedral', 'basilica'];
+      const shoppingKeywords = ['shopping', 'mall', 'plaza', 'center', 'centre'];
+
+      const placesOfWorship = filteredFree.filter(place =>
+        worshipKeywords.some(keyword => place.name.toLowerCase().includes(keyword))
+      ).sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance)).slice(0, 10); // Max 10 places of worship
+
+      const shoppingMalls = filteredFree.filter(place =>
+        shoppingKeywords.some(keyword => place.name.toLowerCase().includes(keyword)) &&
+        !worshipKeywords.some(keyword => place.name.toLowerCase().includes(keyword))
+      ).sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance)).slice(0, 5); // Max 5 shopping malls
+
+      const otherFree = filteredFree.filter(place => {
+        const name = place.name.toLowerCase();
+        return !worshipKeywords.some(keyword => name.includes(keyword)) &&
+          !shoppingKeywords.some(keyword => name.includes(keyword));
+      }).sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance));
+
+      // Combine for diversity: beaches/parks first, then shopping malls, then places of worship
+      const mixedFree = [...otherFree, ...shoppingMalls, ...placesOfWorship].slice(0, 15);
+
+      // Categorize services with specific limits
+      const metroTrainKeywords = ['metro', 'subway', 'railway', 'train', 'railroad'];
+      const busKeywords = ['bus stop', 'bus station'];
+      const policeKeywords = ['police'];
+      const salonKeywords = ['salon', 'hairdresser', 'barber'];
+
+      // Prioritize metro/train stations
+      const metroTrainStations = allServices.filter(place => {
+        const name = place.name.toLowerCase();
+        const type = place.type.toLowerCase();
+        return metroTrainKeywords.some(keyword => name.includes(keyword) || type.includes(keyword));
+      }).sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance)).slice(0, 6); // Max 6 metro/train
+
+      // Limit bus stops
+      const busStops = allServices.filter(place => {
+        const name = place.name.toLowerCase();
+        const type = place.type.toLowerCase();
+        return busKeywords.some(keyword => name.includes(keyword) || type.includes(keyword)) &&
+          !metroTrainKeywords.some(keyword => name.includes(keyword) || type.includes(keyword));
+      }).sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance)).slice(0, 3); // Max 3 bus stops
+
+      // Limit police stations
+      const policeStations = allServices.filter(place => {
+        const name = place.name.toLowerCase();
+        const type = place.type.toLowerCase();
+        return policeKeywords.some(keyword => name.includes(keyword) || type.includes(keyword));
+      }).sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance)).slice(0, 1); // Max 1 police
+
+      // Limit salons
+      const salons = allServices.filter(place => {
+        const name = place.name.toLowerCase();
+        const type = place.type.toLowerCase();
+        return salonKeywords.some(keyword => name.includes(keyword) || type.includes(keyword));
+      }).sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance)).slice(0, 2); // Max 2 salons
+
+      // Calculate how many slots are left for other services
+      const usedSlots = metroTrainStations.length + busStops.length + policeStations.length + salons.length;
+      const remainingSlots = Math.max(15 - usedSlots, 3); // At least 3 other services
+
+      // Other essential services - flexible to fill remaining slots
+      const otherServices = allServices.filter(place => {
+        const name = place.name.toLowerCase();
+        const type = place.type.toLowerCase();
+        return !metroTrainKeywords.some(keyword => name.includes(keyword) || type.includes(keyword)) &&
+          !busKeywords.some(keyword => name.includes(keyword) || type.includes(keyword)) &&
+          !policeKeywords.some(keyword => name.includes(keyword) || type.includes(keyword)) &&
+          !salonKeywords.some(keyword => name.includes(keyword) || type.includes(keyword));
+      }).sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance)).slice(0, remainingSlots);
+
+      // Combine: metro/train first, then bus, then other services, police, and salons
+      const mixedServices = [...metroTrainStations, ...busStops, ...otherServices, ...policeStations, ...salons].slice(0, 15);
+
       const formatted = {
-        attractions: attractions.sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance)).slice(0, 10),
-        food: food.sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance)).slice(0, 10),
-        free: free.sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance)).slice(0, 10),
-        services: services.sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance)).slice(0, 10),
+        attractions: sortAttractions(attractions).slice(0, 15),
+        food: food.sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance)).slice(0, 15),
+        free: mixedFree,
+        services: mixedServices,
       };
+
       setNearbyPlaces(formatted);
       cacheRef.current.set(cacheKey, { ts: Date.now(), data: formatted });
       setLastUpdated(new Date());
       setHasFetched(true);
-    } catch {
-      if (!hasFetched) {
-        toast.error("Nearby search is busy. Please try again.");
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') {
+        console.error("TomTom fetch error:", err);
+        if (!hasFetched) {
+          toast.error("Nearby search is busy. Please try again.");
+        }
       }
     } finally {
       clearTimeout(timeout);
@@ -317,21 +348,6 @@ export default function Location() {
     return lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-    const R = 6371e3; // Earth's radius in meters
-    const φ1 = (lat1 * Math.PI) / 180;
-    const φ2 = (lat2 * Math.PI) / 180;
-    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
-    const Δλ = ((lon2 - lon1) * Math.PI) / 180;
-
-    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-              Math.cos(φ1) * Math.cos(φ2) *
-              Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    return R * c; // Distance in meters
-  };
-
   const formatDistance = (meters: number): string => {
     if (meters < 1000) {
       return `${Math.round(meters)} m`;
@@ -343,180 +359,24 @@ export default function Location() {
     return str.charAt(0).toUpperCase() + str.slice(1).replace(/_/g, " ");
   };
 
-  // Enhanced categorization helper functions
-  const isFoodAmenity = (amenity: string): boolean => {
-    return ["restaurant", "cafe", "fast_food", "bar", "pub", "food_court", "biergarten"].includes(amenity);
-  };
-
-  const isFoodShop = (shop: string): boolean => {
-    return ["bakery", "butcher", "convenience", "supermarket", "greengrocer", "deli", "pastry", "cheese", "chocolate"].includes(shop);
-  };
-
-  const isServiceAmenity = (amenity: string): boolean => {
-    return ["toilets", "atm", "pharmacy", "police", "hospital", "clinic", "doctors", "dentist", "veterinary", 
-            "bank", "post_office", "library", "community_centre", "place_of_worship"].includes(amenity);
-  };
-
-  const isServiceShop = (shop: string): boolean => {
-    return ["chemist", "optician", "hairdresser", "beauty", "laundry", "dry_cleaning", "tailor"].includes(shop);
-  };
-
-  const isServiceOffice = (office: string): boolean => {
-    return ["government", "administrative", "diplomatic"].includes(office);
-  };
-
-  const formatLeisureType = (leisure: string): string => {
-    const types: Record<string, string> = {
-      "park": "Park",
-      "garden": "Garden", 
-      "playground": "Playground",
-      "nature_reserve": "Nature Reserve",
-      "recreation_ground": "Recreation Area",
-      "common": "Common Land",
-      "green": "Green Space",
-      "beach": "Beach"
-    };
-    return types[leisure] || capitalizeFirst(leisure);
-  };
-
-  const formatHistoricType = (historic: string): string => {
-    const types: Record<string, string> = {
-      "monument": "Monument",
-      "memorial": "Memorial",
-      "castle": "Castle",
-      "ruins": "Ruins"
-    };
-    return types[historic] || capitalizeFirst(historic);
-  };
-
-  const formatTourismType = (tourism: string): string => {
-    const types: Record<string, string> = {
-      "museum": "Museum",
-      "gallery": "Art Gallery",
-      "theme_park": "Theme Park",
-      "zoo": "Zoo",
-      "aquarium": "Aquarium",
-      "planetarium": "Planetarium"
-    };
-    return types[tourism] || capitalizeFirst(tourism);
-  };
-
-  const formatFoodType = (tags: { cuisine?: string; amenity?: string }): string => {
-    if (tags.cuisine) {
-      const cuisines = tags.cuisine.split(";");
-      const cuisineMap: Record<string, string> = {
-        "italian": "Italian",
-        "chinese": "Chinese",
-        "indian": "Indian",
-        "mexican": "Mexican",
-        "japanese": "Japanese",
-        "thai": "Thai",
-        "french": "French",
-        "mediterranean": "Mediterranean",
-        "american": "American",
-        "pizza": "Pizza"
-      };
-      return cuisineMap[cuisines[0]] || capitalizeFirst(cuisines[0]);
-    }
-    if (tags.amenity) {
-      const amenityMap: Record<string, string> = {
-        "restaurant": "Restaurant",
-        "cafe": "Cafe",
-        "fast_food": "Fast Food",
-        "bar": "Bar",
-        "pub": "Pub",
-        "food_court": "Food Court",
-        "biergarten": "Beer Garden"
-      };
-      return amenityMap[tags.amenity] || capitalizeFirst(tags.amenity);
-    }
-    return "Food";
-  };
-
-  const formatShopType = (shop: string): string => {
-    const shopMap: Record<string, string> = {
-      "bakery": "Bakery",
-      "butcher": "Butcher",
-      "convenience": "Convenience Store",
-      "supermarket": "Supermarket",
-      "greengrocer": "Greengrocer",
-      "deli": "Deli",
-      "pastry": "Pastry Shop",
-      "cheese": "Cheese Shop",
-      "chocolate": "Chocolate Shop"
-    };
-    return shopMap[shop] || capitalizeFirst(shop);
-  };
-
-  const formatOfficeType = (office: string): string => {
-    const officeMap: Record<string, string> = {
-      "government": "Government Office",
-      "administrative": "Administrative Office",
-      "diplomatic": "Embassy/Consulate"
-    };
-    return officeMap[office] || capitalizeFirst(office);
-  };
-
-  const getServiceInfo = (amenity: string): { icon: React.ElementType; type: string } => {
-    const serviceMap: Record<string, { icon: React.ElementType; type: string }> = {
-      toilets: { icon: Bath, type: "Toilet" },
-      atm: { icon: Bank, type: "ATM" },
-      pharmacy: { icon: Pill, type: "Pharmacy" },
-      police: { icon: Shield, type: "Police" },
-      hospital: { icon: Building2, type: "Hospital" },
-      clinic: { icon: Building2, type: "Clinic" },
-      doctors: { icon: Pill, type: "Doctor" },
-      dentist: { icon: Pill, type: "Dentist" },
-      veterinary: { icon: Pill, type: "Veterinary" },
-      bank: { icon: Bank, type: "Bank" },
-      post_office: { icon: Building2, type: "Post Office" },
-      library: { icon: Building2, type: "Library" },
-      community_centre: { icon: Building2, type: "Community Center" },
-      place_of_worship: { icon: Building2, type: "Place of Worship" }
-    };
-    return serviceMap[amenity] || { icon: Building2, type: capitalizeFirst(amenity) };
-  };
-
-  const getServiceShopInfo = (shop: string): { icon: React.ElementType; type: string } => {
-    const shopMap: Record<string, { icon: React.ElementType; type: string }> = {
-      chemist: { icon: Pill, type: "Chemist" },
-      optician: { icon: Pill, type: "Optician" },
-      hairdresser: { icon: Sparkles, type: "Hairdresser" },
-      beauty: { icon: Sparkles, type: "Beauty Salon" },
-      laundry: { icon: Sparkles, type: "Laundry" },
-      dry_cleaning: { icon: Sparkles, type: "Dry Cleaning" },
-      tailor: { icon: Sparkles, type: "Tailor" }
-    };
-    return shopMap[shop] || { icon: Building2, type: capitalizeFirst(shop) };
-  };
-
-  const getTransportInfo = (tags: { railway?: string; public_transport?: string; highway?: string }): { icon: React.ElementType; type: string } | null => {
-    if (tags.railway === "station" || tags.public_transport === "station") {
-      return { icon: Bus, type: "Train Station" };
-    } else if (tags.railway === "subway_entrance") {
-      return { icon: Bus, type: "Subway Entrance" };
-    } else if (tags.public_transport === "stop_position" || tags.highway === "bus_stop") {
-      return { icon: Bus, type: "Bus Stop" };
-    }
-    return null;
-  };
-
-  const getEmergencyInfo = (emergency: string): { icon: React.ElementType; type: string } | null => {
-    const emergencyMap: Record<string, { icon: React.ElementType; type: string }> = {
-      fire_hydrant: { icon: Shield, type: "Fire Hydrant" },
-      phone: { icon: Shield, type: "Emergency Phone" },
-      assembly_point: { icon: Shield, type: "Assembly Point" }
-    };
-    return emergencyMap[emergency] || null;
-  };
-
   const openInMaps = (place: Place) => {
-    const lat = place.lat;
-    const lng = place.lng;
-    if (typeof lat !== "number" || typeof lng !== "number") return;
-    const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
-    const opened = window.open(url, "_blank", "noopener,noreferrer");
-    if (!opened) {
+    const lat = Number(place.lat);
+    const lng = Number(place.lng);
+
+    if (isNaN(lat) || isNaN(lng)) {
+      console.error("Invalid coordinates for place:", place);
+      return;
+    }
+
+    // Use 'dir' (Directions) ensuring destination is set correctly
+    // This works better for 'Navigation' context than just 'search'
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+
+    // Open in new tab/app
+    const newWindow = window.open(url, '_blank');
+
+    // Fallback if popup blocker interferes (though strictly onClick shouldn't trigger it)
+    if (!newWindow || newWindow.closed || typeof newWindow.closed == 'undefined') {
       window.location.href = url;
     }
   };
@@ -704,7 +564,7 @@ function EmptyState({ category, hasFetched }: { category: string; hasFetched: bo
       </div>
     );
   }
-  
+
   return (
     <div className="text-center py-8 text-muted-foreground">
       <MapPin className="h-12 w-12 mx-auto mb-3 opacity-30" />
