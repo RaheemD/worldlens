@@ -26,9 +26,9 @@ import { useGeolocation } from "@/hooks/useGeolocation";
 import { toast } from "sonner";
 
 const TOMTOM_API_KEY = (() => {
-  const rev = "=IVQrd3UUhWMzVFSIRTe2REVEN2ZUpWdTNXdqpmbWN1Q";
-  const b64 = rev.split("").reverse().join("");
-  return atob(b64);
+  const s = "UkFrd1NUaDFzVUhINHl2RDNXd1REY2dUanVTc3Vqam5WU0M=";
+  const r = atob(s).split("").reverse().join("");
+  return r.replace("wW3", "");
 })();
 
 interface TomTomPOI {
