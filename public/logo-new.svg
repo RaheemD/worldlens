@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Background Circle -->
+  <circle cx="256" cy="256" r="256" fill="#2E7D32" />
+  
+  <!-- Globe Grid (White) -->
+  <g stroke="#FFFFFF" stroke-width="24" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Outer Globe Circle (inset slightly) -->
+    <circle cx="256" cy="256" r="180" stroke-width="24" />
+    
+    <!-- Vertical Meridian -->
+    <line x1="256" y1="76" x2="256" y2="436" />
+    
+    <!-- Horizontal Equator -->
+    <line x1="76" y1="256" x2="436" y2="256" />
+    
+    <!-- Longitude Curves -->
+    <ellipse cx="256" cy="256" rx="90" ry="180" />
+    
+    <!-- Latitude Curves -->
+    <path d="M106 166 Q 256 210 406 166" fill="none" />
+    <path d="M106 346 Q 256 302 406 346" fill="none" />
+  </g>
+</svg>
