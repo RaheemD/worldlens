@@ -24,6 +24,11 @@ interface UseGeolocationOptions {
 
 export function useGeolocation(options: UseGeolocationOptions = {}) {
   const [state, setState] = useState<GeolocationState>(() => {
+    // Always initialize with shared state if available to prevent flashing empty state
+    if (sharedGeolocationState) {
+      return sharedGeolocationState;
+    }
+    
     if (options.autoRequest === "once-per-session" && sharedGeolocationState) {
       return sharedGeolocationState;
     }
