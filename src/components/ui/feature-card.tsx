@@ -3,7 +3,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const featureCardVariants = cva(
-  "relative flex items-center gap-4 rounded-xl p-4 transition-all duration-200 active:scale-[0.98]",
+  "relative flex items-center gap-3 sm:gap-4 rounded-xl p-3 sm:p-4 transition-all duration-200 active:scale-[0.98]",
   {
     variants: {
       variant: {
@@ -39,12 +39,14 @@ const FeatureCard = React.forwardRef<HTMLDivElement, FeatureCardProps>(
         {...props}
       >
         {icon && (
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
             {icon}
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-foreground truncate">{title}</h3>
+          <h3 className="font-semibold text-foreground break-words text-sm sm:text-base">
+            {title}
+          </h3>
           {subtitle && (
             <div className="text-sm text-muted-foreground truncate">{subtitle}</div>
           )}
