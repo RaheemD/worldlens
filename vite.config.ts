@@ -17,7 +17,7 @@ export default defineConfig(({ mode }) => ({
     VitePWA({
       registerType: "autoUpdate",
       devOptions: { enabled: true },
-      includeAssets: ["favicon.svg", "robots.txt"],
+      includeAssets: ["logo-new.svg", "robots.txt"],
       manifest: {
         name: "WorldLens - AI Travel Companion",
         short_name: "WorldLens",
