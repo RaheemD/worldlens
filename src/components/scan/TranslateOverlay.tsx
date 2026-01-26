@@ -20,7 +20,6 @@ import {
 } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { useAIUsage } from "@/contexts/AIUsageContext";
 import { languages, getLanguageName } from "@/lib/languages";
 import { cacheTranslation, getCachedTranslation, isOnline } from "@/lib/offlineStorage";
 
@@ -31,7 +30,6 @@ interface TranslateOverlayProps {
 }
 
 export function TranslateOverlay({ extractedText, isOpen, onClose }: TranslateOverlayProps) {
-  const { canUseAI, remaining, incrementUsage, isAuthenticated } = useAIUsage();
   const [targetLang, setTargetLang] = useState("en");
   const [translatedText, setTranslatedText] = useState("");
   const [pronunciation, setPronunciation] = useState("");
@@ -77,23 +75,6 @@ export function TranslateOverlay({ extractedText, isOpen, onClose }: TranslateOv
         return;
       }
 
-      if (!canUseAI) {
-        toast.error(
-          isAuthenticated 
-            ? "Daily AI limit reached. Try again tomorrow!" 
-            : "Daily limit reached. Sign in for more AI calls!"
-        );
-        setIsTranslating(false);
-        return;
-      }
-
-      const allowed = await incrementUsage();
-      if (!allowed) {
-        toast.error("AI usage limit reached for today");
-        setIsTranslating(false);
-        return;
-      }
-
       const { data, error } = await supabase.functions.invoke("translate", {
         body: { text: extractedText, targetLanguage: getLanguageName(targetLang) },
       });
@@ -124,16 +105,45 @@ export function TranslateOverlay({ extractedText, isOpen, onClose }: TranslateOv
     }
   };
 
-  const handleSpeak = () => {
+  const handleSpeak = async () => {
     if (!translatedText) return;
-    const utterance = new SpeechSynthesisUtterance(translatedText);
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      toast.error("Speech synthesis isn't supported in this browser");
+      return;
+    }
+
+    const synth = window.speechSynthesis;
     const langMap: Record<string, string> = {
       ja: "ja-JP", ko: "ko-KR", zh: "zh-CN", es: "es-ES", fr: "fr-FR",
       de: "de-DE", it: "it-IT", pt: "pt-PT", ru: "ru-RU", ar: "ar-SA",
       hi: "hi-IN", th: "th-TH", vi: "vi-VN", en: "en-US",
     };
-    utterance.lang = langMap[targetLang] || `${targetLang}-${targetLang.toUpperCase()}`;
-    speechSynthesis.speak(utterance);
+    const utterance = new SpeechSynthesisUtterance(translatedText);
+    const lang = langMap[targetLang] || `${targetLang}-${targetLang.toUpperCase()}`;
+    utterance.lang = lang;
+
+    if (synth.getVoices().length === 0) {
+      await new Promise<void>((resolve) => {
+        const handleVoicesChanged = () => {
+          synth.removeEventListener("voiceschanged", handleVoicesChanged);
+          resolve();
+        };
+        synth.addEventListener("voiceschanged", handleVoicesChanged);
+      });
+    }
+
+    const voices = synth.getVoices();
+    const matchedVoice =
+      voices.find((voice) => voice.lang === lang) ||
+      voices.find((voice) => voice.lang.startsWith(targetLang)) ||
+      voices.find((voice) => voice.lang.startsWith(lang.split("-")[0]));
+
+    if (matchedVoice) {
+      utterance.voice = matchedVoice;
+    }
+
+    synth.cancel();
+    setTimeout(() => synth.speak(utterance), 0);
   };
 
   const handleCopy = () => {
@@ -200,7 +210,7 @@ export function TranslateOverlay({ extractedText, isOpen, onClose }: TranslateOv
               <Button
                 className="bg-gradient-to-r from-primary to-accent text-primary-foreground"
                 onClick={handleTranslate}
-                disabled={isTranslating || (!canUseAI && !offline)}
+                disabled={isTranslating}
               >
                 {isTranslating ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -218,18 +228,17 @@ export function TranslateOverlay({ extractedText, isOpen, onClose }: TranslateOv
               </Button>
             </div>
 
-            {/* Remaining calls indicator */}
-            <p className="text-xs text-muted-foreground text-center">
-              {offline ? (
-                <span className="flex items-center justify-center gap-1">
-                  <WifiOff className="h-3 w-3" /> Offline - using cached translations
-                </span>
-              ) : isFromCache ? (
-                "Retrieved from cache (no AI call used)"
-              ) : (
-                `${remaining} AI calls remaining today`
-              )}
-            </p>
+            {(offline || isFromCache) && (
+              <p className="text-xs text-muted-foreground text-center">
+                {offline ? (
+                  <span className="flex items-center justify-center gap-1">
+                    <WifiOff className="h-3 w-3" /> Offline - using cached translations
+                  </span>
+                ) : (
+                  "Retrieved from cache"
+                )}
+              </p>
+            )}
 
             {/* Translation Result */}
             {translatedText && (
