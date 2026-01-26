@@ -22,7 +22,7 @@ export default defineConfig(({ mode }) => ({
         name: "WorldLens - AI Travel Companion",
         short_name: "WorldLens",
         description: "Your AI-powered travel companion for scanning, translating, and exploring",
-        theme_color: "#8b5cf6",
+        theme_color: "#0a0a0a",
         background_color: "#0a0a0a",
         display: "standalone",
         orientation: "portrait",
