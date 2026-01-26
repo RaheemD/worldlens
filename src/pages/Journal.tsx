@@ -31,6 +31,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
 import { ShareDialog } from "@/components/share/ShareDialog";
@@ -77,6 +87,8 @@ export default function Journal() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [generatingFor, setGeneratingFor] = useState<string | null>(null);
   const [showGallery, setShowGallery] = useState(false);
+  const [deleteTripId, setDeleteTripId] = useState<string | null>(null);
+  const [deleteScanId, setDeleteScanId] = useState<string | null>(null);
   const { isOffline, cacheScansForOffline, getOfflineScans } = useOfflineSync();
 
   useEffect(() => {
@@ -297,6 +309,48 @@ export default function Journal() {
     }
   };
 
+  const deleteTrip = async () => {
+    if (!deleteTripId) return;
+
+    try {
+      const { error } = await supabase
+        .from("trips")
+        .delete()
+        .eq("id", deleteTripId);
+
+      if (error) throw error;
+
+      toast.success("Trip deleted successfully");
+      fetchJournalData();
+    } catch (error) {
+      console.error("Error deleting trip:", error);
+      toast.error("Failed to delete trip");
+    } finally {
+      setDeleteTripId(null);
+    }
+  };
+
+  const deleteScan = async () => {
+    if (!deleteScanId) return;
+
+    try {
+      const { error } = await supabase
+        .from("scan_entries")
+        .delete()
+        .eq("id", deleteScanId);
+
+      if (error) throw error;
+
+      toast.success("Scan deleted successfully");
+      fetchJournalData();
+    } catch (error) {
+      console.error("Error deleting scan:", error);
+      toast.error("Failed to delete scan");
+    } finally {
+      setDeleteScanId(null);
+    }
+  };
+
   if (isLoading) {
     return (
       <AppLayout title="Travel Journal">
@@ -321,6 +375,40 @@ export default function Journal() {
       </AnimatePresence>
 
       <div className="px-4 py-4 space-y-6">
+        <AlertDialog open={!!deleteTripId} onOpenChange={(open) => !open && setDeleteTripId(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Trip</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete this trip? This action cannot be undone and will remove all associated data.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={deleteTrip} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog open={!!deleteScanId} onOpenChange={(open) => !open && setDeleteScanId(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Scan</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete this scan? This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={deleteScan} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
         {/* Action Buttons */}
         <div className="flex gap-3">
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -401,9 +489,19 @@ export default function Journal() {
                       </p>
                     )}
                   </div>
-                  <StatusBadge variant="primary">
-                    {trip.scan_count} scans
-                  </StatusBadge>
+                  <div className="flex items-center gap-2">
+                    <StatusBadge variant="primary">
+                      {trip.scan_count} scans
+                    </StatusBadge>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                      onClick={() => setDeleteTripId(trip.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
 
                 {trip.start_date && (
@@ -414,9 +512,23 @@ export default function Journal() {
                 )}
 
                 {trip.ai_summary && (
-                  <p className="text-sm text-muted-foreground line-clamp-2">
-                    {trip.ai_summary}
-                  </p>
+                  <div className="mb-3">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Summary</p>
+                    <p className="text-sm text-muted-foreground line-clamp-3">
+                      {trip.ai_summary}
+                    </p>
+                  </div>
+                )}
+
+                {trip.shareable_story && (
+                  <div className="mb-3 bg-primary/5 p-3 rounded-lg border border-primary/10">
+                    <p className="text-xs font-medium text-primary uppercase tracking-wider mb-1 flex items-center gap-1">
+                      <Sparkles className="h-3 w-3" /> Story
+                    </p>
+                    <p className="text-sm text-foreground/90 italic line-clamp-4">
+                      "{trip.shareable_story}"
+                    </p>
+                  </div>
                 )}
 
                 <div className="flex gap-2 pt-2">
@@ -538,10 +650,22 @@ export default function Journal() {
                 key={scan.id}
                 icon={<span className="text-lg">{getCategoryIcon(scan.category)}</span>}
                 title={scan.name || "Unknown"}
-                subtitle={scan.location_name || format(new Date(scan.created_at), "MMM d, h:mm a")}
+                subtitle={
+                  scan.location_name 
+                    ? `${scan.location_name} • ${format(new Date(scan.created_at), "MMM d, h:mm a")}`
+                    : format(new Date(scan.created_at), "MMM d, h:mm a")
+                }
                 action={
                   <div className="flex items-center gap-2">
                     {scan.is_favorite && <Star className="h-4 w-4 text-warning fill-warning" />}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                      onClick={() => setDeleteScanId(scan.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                     <ChevronRight className="h-4 w-4 text-muted-foreground" />
                   </div>
                 }
