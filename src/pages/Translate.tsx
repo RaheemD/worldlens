@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { MessageSquare, Volume2, Copy, Loader2, AlertCircle, Globe, Mic } from "lucide-react";
+import { MessageSquare, Volume2, Copy, Loader2, Globe, Mic } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { AnimatedPage, fadeInUp, staggerContainer } from "@/components/AnimatedPage";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { useAIUsage } from "@/contexts/AIUsageContext";
 import { useProfile } from "@/contexts/ProfileContext";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import { languages, getLanguageFromCountry, getLanguageName } from "@/lib/languages";
@@ -22,10 +21,13 @@ const quickPhrases = [
   { en: "Can I have the menu?", category: "Restaurant" },
   { en: "I am allergic to...", category: "Food" },
   { en: "Please take me to this address", category: "Transport" },
+  { en: "Do you speak English?", category: "Essential" },
+  { en: "I am lost", category: "Emergency" },
+  { en: "Thank you", category: "Essential" },
+  { en: "Where is the train station?", category: "Transport" },
 ];
 
 export default function Translate() {
-  const { canUseAI, remaining, incrementUsage, isAuthenticated } = useAIUsage();
   const { profile } = useProfile();
   const { countryCode } = useGeolocation();
   
@@ -78,21 +80,6 @@ export default function Translate() {
     const textToTranslate = text || inputText;
     if (!textToTranslate.trim()) return;
 
-    if (!canUseAI) {
-      toast.error(
-        isAuthenticated 
-          ? "Daily AI limit reached. Try again tomorrow!" 
-          : "Daily limit reached. Sign in for more AI calls!"
-      );
-      return;
-    }
-
-    const allowed = await incrementUsage();
-    if (!allowed) {
-      toast.error("AI usage limit reached for today");
-      return;
-    }
-
     setIsTranslating(true);
     setInputText(textToTranslate);
     setTranslatedText("");
@@ -126,17 +113,45 @@ export default function Translate() {
     }
   };
 
-  const handleSpeak = () => {
+  const handleSpeak = async () => {
     if (!translatedText) return;
-    const utterance = new SpeechSynthesisUtterance(translatedText);
-    // Map language codes to speech synthesis language codes
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      toast.error("Speech synthesis isn't supported in this browser");
+      return;
+    }
+
+    const synth = window.speechSynthesis;
     const langMap: Record<string, string> = {
       ja: "ja-JP", ko: "ko-KR", zh: "zh-CN", es: "es-ES", fr: "fr-FR",
       de: "de-DE", it: "it-IT", pt: "pt-PT", ru: "ru-RU", ar: "ar-SA",
-      hi: "hi-IN", th: "th-TH", vi: "vi-VN",
+      hi: "hi-IN", th: "th-TH", vi: "vi-VN", en: "en-US",
     };
-    utterance.lang = langMap[targetLang] || `${targetLang}-${targetLang.toUpperCase()}`;
-    speechSynthesis.speak(utterance);
+    const utterance = new SpeechSynthesisUtterance(translatedText);
+    const lang = langMap[targetLang] || `${targetLang}-${targetLang.toUpperCase()}`;
+    utterance.lang = lang;
+
+    if (synth.getVoices().length === 0) {
+      await new Promise<void>((resolve) => {
+        const handleVoicesChanged = () => {
+          synth.removeEventListener("voiceschanged", handleVoicesChanged);
+          resolve();
+        };
+        synth.addEventListener("voiceschanged", handleVoicesChanged);
+      });
+    }
+
+    const voices = synth.getVoices();
+    const matchedVoice =
+      voices.find((voice) => voice.lang === lang) ||
+      voices.find((voice) => voice.lang.startsWith(targetLang)) ||
+      voices.find((voice) => voice.lang.startsWith(lang.split("-")[0]));
+
+    if (matchedVoice) {
+      utterance.voice = matchedVoice;
+    }
+
+    synth.cancel();
+    setTimeout(() => synth.speak(utterance), 0);
   };
 
   const handleCopy = () => {
@@ -153,21 +168,6 @@ export default function Translate() {
           initial="initial"
           animate="animate"
         >
-          {/* Usage Warning */}
-          {!canUseAI && (
-            <motion.div 
-              className="p-3 rounded-xl bg-destructive/10 border border-destructive/30 flex items-center gap-3"
-              variants={fadeInUp}
-            >
-              <AlertCircle className="h-5 w-5 text-destructive shrink-0" />
-              <p className="text-sm text-destructive">
-                {isAuthenticated 
-                  ? "You've used all 5 AI calls today. Try again tomorrow!" 
-                  : "Daily limit reached. Sign in for 5 AI calls per day!"}
-              </p>
-            </motion.div>
-          )}
-
           {/* Input Section */}
           <motion.div className="space-y-3" variants={fadeInUp}>
             <div className="flex items-center justify-between">
@@ -230,7 +230,7 @@ export default function Translate() {
             <Button
               className="w-full h-12 bg-gradient-to-r from-primary to-accent text-primary-foreground"
               onClick={() => handleTranslate()}
-              disabled={isTranslating || !inputText.trim() || !canUseAI}
+              disabled={isTranslating || !inputText.trim()}
             >
               {isTranslating ? (
                 <>
@@ -240,7 +240,7 @@ export default function Translate() {
               ) : (
                 <>
                   <MessageSquare className="h-4 w-4 mr-2" />
-                  Translate ({remaining} left)
+                  Translate
                 </>
               )}
             </Button>
@@ -290,9 +290,8 @@ export default function Translate() {
                   key={i}
                   className="flex items-center justify-between p-4 bg-card rounded-xl border border-border/50 hover:border-primary/30 transition-all text-left"
                   onClick={() => handleTranslate(phrase.en)}
-                  disabled={!canUseAI}
-                  whileHover={{ scale: canUseAI ? 1.01 : 1 }}
-                  whileTap={{ scale: canUseAI ? 0.98 : 1 }}
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.98 }}
                 >
                   <span className="font-medium">{phrase.en}</span>
                   <span className="text-xs text-muted-foreground px-2 py-1 bg-muted rounded-full">
