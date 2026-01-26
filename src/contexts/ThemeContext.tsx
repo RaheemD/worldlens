@@ -37,6 +37,15 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       setResolvedTheme(resolved);
       root.classList.remove("light", "dark");
       root.classList.add(resolved);
+
+      // Update PWA theme color
+      const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+      if (metaThemeColor) {
+        metaThemeColor.setAttribute(
+          "content",
+          resolved === "dark" ? "#0a0a0a" : "#f9fafb"
+        );
+      }
     };
 
     updateResolvedTheme();
