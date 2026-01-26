@@ -46,7 +46,7 @@ export default function Scan() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [trips, setTrips] = useState<Trip[]>([]);
-  const [selectedTripId, setSelectedTripId] = useState<string>("");
+  const [selectedTripId, setSelectedTripId] = useState<string>("none");
   const [translateText, setTranslateText] = useState<string>("");
   const [showTranslate, setShowTranslate] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -207,7 +207,7 @@ export default function Scan() {
         prices: result.prices ? JSON.parse(JSON.stringify(result.prices)) : null,
         warnings: result.warnings || [],
         tips: result.tips || [],
-        trip_id: selectedTripId === "none" ? null : selectedTripId,
+        trip_id: !selectedTripId || selectedTripId === "none" ? null : selectedTripId,
       }]);
 
       if (error) throw error;
@@ -305,8 +305,8 @@ export default function Scan() {
                 <AlertCircle className="h-5 w-5 text-destructive shrink-0" />
                 <p className="text-sm text-destructive">
                   {isAuthenticated 
-                    ? "You've used all 5 AI calls today. Try again tomorrow!" 
-                    : "Daily limit reached. Sign in for 5 AI calls per day!"}
+                    ? "You've used all 7 AI calls today. Try again tomorrow!" 
+                    : "Daily limit reached. Sign in for 7 AI calls per day!"}
                 </p>
               </motion.div>
             )}
@@ -439,7 +439,7 @@ export default function Scan() {
                       )}
                       
                       <Button
-                        className="w-full h-14 bg-card border border-border/50 hover:bg-card/80 text-foreground"
+                        className="w-full h-14 bg-card border border-border/50 hover:bg-card/80 text-foreground hover:text-foreground"
                         variant="ghost"
                         onClick={saveToJournal}
                          disabled={isSaving || saveSuccess}
@@ -471,7 +471,7 @@ export default function Scan() {
                       transition={{ delay: 0.2 }}
                     >
                       <Button
-                        className="w-full h-14 bg-card border border-border/50 hover:bg-card/80 text-foreground"
+                        className="w-full h-14 bg-card border border-border/50 hover:bg-card/80 text-foreground hover:text-foreground"
                         variant="ghost"
                         onClick={() => toast.error("Please sign in to save scans")}
                       >
