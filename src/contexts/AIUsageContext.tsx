@@ -3,7 +3,7 @@ import { useAuth } from "./AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 
 const ANONYMOUS_LIMIT = 3;
-const AUTHENTICATED_LIMIT = 5;
+const AUTHENTICATED_LIMIT = 7;
 const SESSION_KEY = "worldlens_session_id";
 const LOCAL_USAGE_KEY = "worldlens_ai_usage_anonymous";
 
