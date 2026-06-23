@@ -3,6 +3,28 @@ import { useState, useEffect, useCallback } from "react";
 let sharedGeolocationState: GeolocationState | null = null;
 let hasAutoRequestedOncePerSession = false;
 
+// --- Reverse-geocoding throttle/cache (shared across all hook instances) ---
+// Nominatim's usage policy allows ~1 request/sec. watchPosition can fire many
+// times a second, so we cache the last lookup and only re-query when the user
+// has moved a meaningful distance and enough time has passed. We also back off
+// when rate-limited (HTTP 429) to avoid hammering the service.
+let lastGeocode = { lat: 0, lng: 0, at: 0, ok: false };
+let geocodeCooldownUntil = 0;
+const MIN_GEOCODE_INTERVAL_MS = 8000; // at most one lookup per 8s
+const MIN_MOVE_METERS = 75; // skip lookup unless moved > ~75m
+const GEOCODE_BACKOFF_MS = 60000; // wait 60s after a failure/429
+
+function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
 interface GeolocationState {
   latitude: number | null;
   longitude: number | null;
@@ -58,17 +80,20 @@ export function useGeolocation(options: UseGeolocationOptions = {}) {
     countryName: string | null;
   }> => {
     try {
-      // Use Nominatim for reverse geocoding (free, no API key needed)
+      // Use Nominatim for reverse geocoding (free, no API key needed).
+      // Note: the User-Agent header cannot be set from a browser (forbidden
+      // header) so we don't try; throttling/back-off keeps us within policy.
       const response = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=16&addressdetails=1`,
-        {
-          headers: {
-            "User-Agent": "WorldLens Travel App",
-          },
-        }
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=16&addressdetails=1`
       );
-      
-      if (!response.ok) return { locationName: null, countryCode: null, countryName: null };
+
+      if (!response.ok) {
+        // Rate-limited or server error: back off so we stop hammering it.
+        if (response.status === 429) {
+          geocodeCooldownUntil = Date.now() + GEOCODE_BACKOFF_MS;
+        }
+        return { locationName: null, countryCode: null, countryName: null };
+      }
       
       const data = await response.json();
       
@@ -95,12 +120,40 @@ export function useGeolocation(options: UseGeolocationOptions = {}) {
       return { locationName, countryCode, countryName };
     } catch (error) {
       console.error("Reverse geocoding error:", error);
+      // Network/CORS failure: back off before trying again.
+      geocodeCooldownUntil = Date.now() + GEOCODE_BACKOFF_MS;
       return { locationName: null, countryCode: null, countryName: null };
     }
   };
 
   const updateFromCoords = useCallback(async (latitude: number, longitude: number, accuracy: number | null) => {
-    const { locationName, countryCode, countryName } = await getLocationInfo(latitude, longitude);
+    const now = Date.now();
+    const prev = sharedGeolocationState;
+
+    // Start from whatever we already know so we don't lose the name between updates.
+    let locationName = prev?.locationName ?? null;
+    let countryCode = prev?.countryCode ?? null;
+    let countryName = prev?.countryName ?? null;
+
+    const haveName = Boolean(prev?.locationName);
+    const movedEnough =
+      !lastGeocode.ok ||
+      distanceMeters(lastGeocode.lat, lastGeocode.lng, latitude, longitude) > MIN_MOVE_METERS;
+    const intervalOk = now - lastGeocode.at > MIN_GEOCODE_INTERVAL_MS;
+    const cooledDown = now > geocodeCooldownUntil;
+
+    // Only hit Nominatim when we have no name yet, OR the user actually moved,
+    // and never more often than the throttle interval / while backed off.
+    if (cooledDown && intervalOk && (!haveName || movedEnough)) {
+      lastGeocode = { ...lastGeocode, at: now };
+      const info = await getLocationInfo(latitude, longitude);
+      if (info.locationName || info.countryCode) {
+        locationName = info.locationName ?? locationName;
+        countryCode = info.countryCode ?? countryCode;
+        countryName = info.countryName ?? countryName;
+        lastGeocode = { lat: latitude, lng: longitude, at: now, ok: true };
+      }
+    }
 
     const nextState: GeolocationState = {
       latitude,
