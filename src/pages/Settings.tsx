@@ -187,6 +187,18 @@ export default function Settings() {
 
   const handleDeleteAccount = async () => {
     setIsDeleting(true);
+
+    // Returns true if the current session no longer maps to a valid user
+    // (i.e. the account has actually been deleted on the server).
+    const accountIsGone = async (): Promise<boolean> => {
+      try {
+        const { data, error } = await supabase.auth.getUser();
+        return Boolean(error) || !data?.user;
+      } catch {
+        return false;
+      }
+    };
+
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
@@ -196,20 +208,45 @@ export default function Settings() {
         return;
       }
 
-      const res = await fetch("/.netlify/functions/delete-account", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      let deleted = false;
+      let serverError: string | null = null;
 
-      if (!res.ok) {
-        const info = await res.json().catch(() => ({}));
-        throw new Error(info.error || "Deletion failed");
+      try {
+        const res = await fetch("/.netlify/functions/delete-account", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          deleted = true;
+        } else {
+          const info = await res.json().catch(() => ({}));
+          serverError = info.error || "Deletion failed";
+        }
+      } catch (networkErr) {
+        // Network error or timeout (e.g. 504) - the deletion may still have
+        // completed on the server, so we verify below before failing.
+        serverError = (networkErr as Error).message;
       }
 
-      toast.success("Your account and data have been deleted");
-      setDeleteOpen(false);
-      await signOut();
-      navigate("/", { replace: true });
+      // If the response wasn't a clear success, double-check whether the
+      // account was actually removed (handles the 504-but-deleted case).
+      if (!deleted) {
+        deleted = await accountIsGone();
+      }
+
+      if (deleted) {
+        try {
+          await supabase.auth.signOut();
+        } catch {
+          /* session is already invalid - safe to ignore */
+        }
+        toast.success("Your account and data have been deleted");
+        // Hard reload to fully reset auth/profile state and avoid stale data.
+        window.location.assign("/");
+        return;
+      }
+
+      throw new Error(serverError || "Deletion failed");
     } catch (err) {
       console.error("Account deletion error:", err);
       toast.error("Could not delete account. Please contact support.");

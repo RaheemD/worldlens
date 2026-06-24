@@ -53,9 +53,14 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
         .from("profiles")
         .select("*")
         .eq("user_id", user.id)
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
+      if (!data) {
+        // No profile row (e.g., brand-new or just-deleted account).
+        setProfile(null);
+        return;
+      }
 
       const notifPrefs = data.notification_preferences as Record<string, unknown> | null;
       setProfile({
