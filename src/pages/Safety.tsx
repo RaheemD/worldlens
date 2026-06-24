@@ -33,7 +33,7 @@ interface SafetyData {
 }
 
 export default function Safety() {
-  const { latitude, longitude, locationName, countryCode, countryName, isLoading: locationLoading } = useGeolocation();
+  const { latitude, longitude, locationName, countryCode, countryName, isLoading: locationLoading } = useGeolocation({ autoRequest: "always" });
   const [safetyData, setSafetyData] = useState<SafetyData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

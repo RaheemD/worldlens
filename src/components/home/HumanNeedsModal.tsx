@@ -103,7 +103,7 @@ interface HumanNeedsModalProps {
 }
 
 export function HumanNeedsModal({ children }: HumanNeedsModalProps) {
-  const { latitude, longitude, isLoading: locationLoading, error: locationError } = useGeolocation();
+  const { latitude, longitude, isLoading: locationLoading, error: locationError, refresh } = useGeolocation();
   const [open, setOpen] = useState(false);
   const [selectedNeed, setSelectedNeed] = useState<NeedType | null>(null);
   const [isSearching, setIsSearching] = useState(false);
@@ -124,6 +124,14 @@ export function HumanNeedsModal({ children }: HumanNeedsModalProps) {
       }
     }
   }, [open]);
+
+  // Request location only when the user opens the help modal (contextual
+  // permission request - never on app launch).
+  useEffect(() => {
+    if (open && latitude == null && longitude == null) {
+      refresh();
+    }
+  }, [open, latitude, longitude, refresh]);
 
   const abortActiveRequest = () => {
     if (activeRequestRef.current) {

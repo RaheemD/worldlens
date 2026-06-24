@@ -40,7 +40,7 @@ interface TomTomSearchResult {
 }
 
 export default function ExploreMap() {
-  const { latitude, longitude, isLoading: geoLoading, error: geoError, refresh } = useGeolocation();
+  const { latitude, longitude, isLoading: geoLoading, error: geoError, refresh } = useGeolocation({ autoRequest: "always" });
   
   const [nearbyPlaces, setNearbyPlaces] = useState<NearbyPlace[]>([]);
   const [isLoadingPlaces, setIsLoadingPlaces] = useState(false);

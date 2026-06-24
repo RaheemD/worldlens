@@ -71,7 +71,7 @@ export function useGeolocation(options: UseGeolocationOptions = {}) {
     timeout = 10000,
     maximumAge = 0,
     watch = true,
-    autoRequest = "always",
+    autoRequest = "never",
   } = options;
 
   const getLocationInfo = async (lat: number, lng: number): Promise<{

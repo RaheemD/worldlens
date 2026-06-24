@@ -58,7 +58,7 @@ interface Place {
 }
 
 export default function Location() {
-  const { latitude, longitude, locationName, error, isLoading, refresh } = useGeolocation();
+  const { latitude, longitude, locationName, error, isLoading, refresh } = useGeolocation({ autoRequest: "always" });
   const [nearbyPlaces, setNearbyPlaces] = useState<{
     attractions: Place[];
     food: Place[];

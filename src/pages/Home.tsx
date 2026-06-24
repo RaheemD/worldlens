@@ -24,7 +24,7 @@ interface ScanEntry {
 export default function Home() {
   const navigate = useNavigate();
   const { locationName, isLoading: locationLoading, error: locationError, refresh } = useGeolocation({
-    autoRequest: "once-per-session",
+    autoRequest: "never",
     watch: false,
   });
   const { user } = useAuth();
