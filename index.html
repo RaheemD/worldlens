@@ -25,96 +25,14 @@
     <link rel="icon" type="image/svg+xml" href="/logo-new.svg" />
     <link rel="manifest" href="/manifest.webmanifest" />
 
-    <!-- Instant branded launch screen (prevents white flash; replaced when the app mounts) -->
+    <!-- Keep the first paint dark (matches the OS splash) so there's no white flash. -->
     <style>
       html, body { margin: 0; background: #0a0a0a; }
-      #app-splash {
-        position: fixed;
-        inset: 0;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 20px;
-        background: radial-gradient(ellipse at top, rgba(18, 192, 143, 0.18) 0%, transparent 55%), #0a0a0a;
-        font-family: 'Inter', system-ui, -apple-system, sans-serif;
-        z-index: 2147483647;
-      }
-      #app-splash .splash-logo {
-        width: 104px;
-        height: 104px;
-        filter: drop-shadow(0 10px 34px rgba(11, 165, 201, 0.4));
-        animation: splashPulse 2.4s ease-in-out infinite;
-      }
-      #app-splash .splash-title {
-        color: #fff;
-        font-size: 27px;
-        font-weight: 800;
-        letter-spacing: -0.02em;
-        margin: 0;
-      }
-      #app-splash .splash-title b {
-        background: linear-gradient(135deg, #12c08f, #0a82d8);
-        -webkit-background-clip: text;
-        background-clip: text;
-        -webkit-text-fill-color: transparent;
-        font-weight: 800;
-      }
-      #app-splash .splash-tagline {
-        color: rgba(255, 255, 255, 0.55);
-        font-size: 13px;
-        letter-spacing: 0.04em;
-      }
-      #app-splash .splash-spinner {
-        margin-top: 8px;
-        width: 26px;
-        height: 26px;
-        border-radius: 50%;
-        border: 3px solid rgba(255, 255, 255, 0.14);
-        border-top-color: #12c08f;
-        animation: splashSpin 0.8s linear infinite;
-      }
-      @keyframes splashSpin { to { transform: rotate(360deg); } }
-      @keyframes splashPulse {
-        0%, 100% { transform: scale(1); opacity: 1; }
-        50% { transform: scale(1.06); opacity: 0.92; }
-      }
     </style>
   </head>
 
   <body>
-    <div id="root">
-      <div id="app-splash">
-        <svg class="splash-logo" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <defs>
-            <linearGradient id="splashGrad" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0" stop-color="#12c08f"/>
-              <stop offset="0.55" stop-color="#0ba5c9"/>
-              <stop offset="1" stop-color="#0a82d8"/>
-            </linearGradient>
-            <radialGradient id="splashHl" cx="0.32" cy="0.27" r="0.78">
-              <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
-              <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.05"/>
-              <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
-            </radialGradient>
-          </defs>
-          <rect width="1024" height="1024" rx="224" ry="224" fill="url(#splashGrad)"/>
-          <rect width="1024" height="1024" rx="224" ry="224" fill="url(#splashHl)"/>
-          <g transform="translate(512,512)" stroke="#ffffff" stroke-width="30" fill="none"
-             stroke-linecap="round" stroke-linejoin="round">
-            <circle r="232"/>
-            <line x1="0" y1="-232" x2="0" y2="232"/>
-            <line x1="-232" y1="0" x2="232" y2="0"/>
-            <ellipse rx="116" ry="232"/>
-            <path d="M-214 -84 Q 0 -22 214 -84"/>
-            <path d="M-214 84 Q 0 22 214 84"/>
-          </g>
-        </svg>
-        <h1 class="splash-title">World<b>Lens</b></h1>
-        <p class="splash-tagline">The World, Explained</p>
-        <div class="splash-spinner"></div>
-      </div>
-    </div>
+    <div id="root"></div>
     <form name="contact" data-netlify="true" netlify-honeypot="bot-field" hidden>
       <input type="text" name="name" />
       <input type="email" name="email" />
