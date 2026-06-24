@@ -285,20 +285,26 @@ async function generateSummary(body: InvokeOptions["body"]): Promise<InvokeResul
 }
 
 // -------------------------------------------------------------------------
-// get-exchange-rates (no AI key needed - uses a free public API)
+// get-exchange-rates (no AI key needed)
+//   - Production: server-side Netlify proxy (avoids browser CORS).
+//   - Dev: open.er-api.com, which is CORS-enabled for browser use.
 // -------------------------------------------------------------------------
 async function getExchangeRates(body: InvokeOptions["body"]): Promise<InvokeResult> {
-  const base = (body?.base as string) || "USD";
+  const base = ((body?.base as string) || "USD").toUpperCase();
   try {
-    const res = await fetch(
-      `https://api.frankfurter.app/latest?from=${encodeURIComponent(base)}`
-    );
+    if (isProxyMode()) {
+      const res = await fetch(`/.netlify/functions/rates?base=${encodeURIComponent(base)}`);
+      if (!res.ok) throw new Error("Rates proxy error");
+      return { data: await res.json(), error: null };
+    }
+
+    const res = await fetch(`https://open.er-api.com/v6/latest/${encodeURIComponent(base)}`);
     if (!res.ok) throw new Error("Failed to fetch exchange rates");
-    const json = await res.json();
-    return {
-      data: { success: true, base, rates: { [base]: 1, ...(json.rates || {}) } },
-      error: null,
-    };
+    const data = await res.json();
+    if (data?.result === "success" && data?.rates) {
+      return { data: { success: true, base, rates: data.rates }, error: null };
+    }
+    return { data: { success: false, error: "Failed to fetch exchange rates" }, error: null };
   } catch (err) {
     return { data: { success: false, error: (err as Error).message }, error: null };
   }

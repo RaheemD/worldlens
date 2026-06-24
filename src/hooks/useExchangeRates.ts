@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { invokeAI } from "@/lib/aiInvoke";
 
 interface ExchangeRatesState {
@@ -10,63 +9,80 @@ interface ExchangeRatesState {
   lastUpdated: Date | null;
 }
 
+interface RatesPayload {
+  success: boolean;
+  rates: Record<string, number>;
+  base: string;
+  error?: string;
+}
+
+// --- Shared cache + in-flight dedupe across all hook instances ---
+// Exchange rates barely change, and several components use this hook at once.
+// Without sharing, each one fired its own network request (the console flood).
+const RATES_TTL_MS = 60 * 60 * 1000; // 1 hour
+const ratesCache = new Map<string, { rates: Record<string, number>; base: string; at: number }>();
+const inflight = new Map<string, Promise<RatesPayload>>();
+
+async function loadRates(base: string): Promise<RatesPayload> {
+  const cached = ratesCache.get(base);
+  if (cached && Date.now() - cached.at < RATES_TTL_MS) {
+    return { success: true, rates: cached.rates, base: cached.base };
+  }
+
+  const existing = inflight.get(base);
+  if (existing) return existing;
+
+  const promise = (async (): Promise<RatesPayload> => {
+    const { data } = await invokeAI<RatesPayload>("get-exchange-rates", { body: { base } });
+    if (data?.success && data.rates) {
+      ratesCache.set(base, { rates: data.rates, base: data.base, at: Date.now() });
+      return { success: true, rates: data.rates, base: data.base };
+    }
+    return { success: false, rates: {}, base, error: data?.error || "Failed to fetch rates" };
+  })();
+
+  inflight.set(base, promise);
+  try {
+    return await promise;
+  } finally {
+    inflight.delete(base);
+  }
+}
+
 export function useExchangeRates(baseCurrency: string = "USD") {
+  const base = (baseCurrency || "USD").toUpperCase();
   const [state, setState] = useState<ExchangeRatesState>({
-    rates: {},
-    base: baseCurrency,
-    isLoading: true,
+    rates: ratesCache.get(base)?.rates ?? {},
+    base,
+    isLoading: !ratesCache.get(base),
     error: null,
-    lastUpdated: null,
+    lastUpdated: ratesCache.get(base) ? new Date(ratesCache.get(base)!.at) : null,
   });
 
-  const fetchRates = useCallback(async () => {
-    setState(prev => ({ ...prev, isLoading: true, error: null }));
-    
-    try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const accessToken = sessionData.session?.access_token;
-      const { data, error } = await invokeAI<{ success: boolean; rates: Record<string, number>; base: string; error?: string }>("get-exchange-rates", {
-        body: { base: baseCurrency },
-        ...(accessToken ? { headers: { Authorization: `Bearer ${accessToken}` } } : {}),
-      });
+  const fetchRates = useCallback(
+    async (force = false) => {
+      if (force) ratesCache.delete(base);
+      setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
-      if (error) throw error;
-
-      if (data.success) {
+      const result = await loadRates(base);
+      if (result.success) {
         setState({
-          rates: data.rates,
-          base: data.base,
+          rates: result.rates,
+          base: result.base,
           isLoading: false,
           error: null,
           lastUpdated: new Date(),
         });
       } else {
-        throw new Error(data.error || "Failed to fetch rates");
-      }
-    } catch (error) {
-      try {
-        const response = await fetch(`https://api.frankfurter.app/latest?from=${encodeURIComponent(baseCurrency)}`);
-        if (!response.ok) {
-          throw new Error("Failed to fetch exchange rates");
-        }
-
-        const json = await response.json();
-        setState({
-          rates: { [baseCurrency]: 1, ...(json.rates || {}) },
-          base: baseCurrency,
-          isLoading: false,
-          error: null,
-          lastUpdated: new Date(),
-        });
-      } catch (fallbackError) {
-        setState(prev => ({
+        setState((prev) => ({
           ...prev,
           isLoading: false,
-          error: (fallbackError as Error).message,
+          error: result.error || "Failed to fetch exchange rates",
         }));
       }
-    }
-  }, [baseCurrency]);
+    },
+    [base]
+  );
 
   useEffect(() => {
     fetchRates();
@@ -75,12 +91,8 @@ export function useExchangeRates(baseCurrency: string = "USD") {
   const convert = useCallback(
     (amount: number, from: string, to: string): number | null => {
       if (!state.rates[from] || !state.rates[to]) return null;
-      
-      // Convert: amount in 'from' currency to 'to' currency
-      // rates are relative to base, so: amount / fromRate * toRate
       const fromRate = state.rates[from];
       const toRate = state.rates[to];
-      
       return (amount / fromRate) * toRate;
     },
     [state.rates]
@@ -98,6 +110,6 @@ export function useExchangeRates(baseCurrency: string = "USD") {
     ...state,
     convert,
     getRate,
-    refresh: fetchRates,
+    refresh: () => fetchRates(true),
   };
 }
