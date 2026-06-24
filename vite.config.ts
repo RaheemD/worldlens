@@ -19,9 +19,14 @@ export default defineConfig(({ mode }) => ({
       devOptions: { enabled: true },
       includeAssets: ["logo-new.svg", "robots.txt"],
       manifest: {
+        // Stable identity so app stores/browsers recognize the app even if the URL changes.
+        id: "/",
         name: "WorldLens - AI Travel Companion",
         short_name: "WorldLens",
         description: "Your AI-powered travel companion for scanning, translating, and exploring",
+        lang: "en",
+        dir: "ltr",
+        categories: ["travel", "navigation", "lifestyle"],
         theme_color: "#0a0a0a",
         background_color: "#0a0a0a",
         display: "standalone",
@@ -33,11 +38,13 @@ export default defineConfig(({ mode }) => ({
             src: "/pwa-192x192.png",
             sizes: "192x192",
             type: "image/png",
+            purpose: "any",
           },
           {
             src: "/pwa-512x512.png",
             sizes: "512x512",
             type: "image/png",
+            purpose: "any",
           },
           {
             src: "/pwa-512x512.png",
