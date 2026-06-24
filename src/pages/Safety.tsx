@@ -33,7 +33,7 @@ interface SafetyData {
 }
 
 export default function Safety() {
-  const { latitude, longitude, locationName, countryCode, countryName, isLoading: locationLoading } = useGeolocation({ autoRequest: "always" });
+  const { latitude, longitude, locationName, countryCode, countryName, isLoading: locationLoading, refresh } = useGeolocation({ autoRequest: "always" });
   const [safetyData, setSafetyData] = useState<SafetyData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,6 +86,16 @@ export default function Safety() {
     }
   }, [latitude, longitude, countryCode, fetchSafetyInfo]);
 
+  // Refresh button: re-request location if we don't have it yet (e.g. the user
+  // previously denied and has since enabled it), otherwise re-fetch safety info.
+  const handleRefresh = useCallback(async () => {
+    if (!latitude || !longitude) {
+      await refresh();
+      return;
+    }
+    fetchSafetyInfo();
+  }, [latitude, longitude, refresh, fetchSafetyInfo]);
+
   const getSafetyLevelDisplay = (level: string) => {
     switch (level) {
       case "warning":
@@ -132,11 +142,11 @@ export default function Safety() {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={fetchSafetyInfo}
-                disabled={isLoading || !latitude || !longitude}
+                onClick={handleRefresh}
+                disabled={isLoading || locationLoading}
                 className="h-9 w-9"
               >
-                <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+                <RefreshCw className={`h-4 w-4 ${(isLoading || locationLoading) ? "animate-spin" : ""}`} />
               </Button>
               {safetyLevel && !isLoading && (
                 <StatusBadge variant={safetyLevel.variant} icon={<safetyLevel.icon className="h-3 w-3" />}>

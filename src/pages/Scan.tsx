@@ -134,6 +134,9 @@ export default function Scan() {
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    // Clear the input value so selecting the SAME image again still fires
+    // onChange (some Android WebViews otherwise silently ignore re-selection).
+    e.target.value = "";
     if (!file) return;
 
     try {
@@ -230,6 +233,9 @@ export default function Scan() {
     setSaveSuccess(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
+    }
+    if (galleryInputRef.current) {
+      galleryInputRef.current.value = "";
     }
   };
 

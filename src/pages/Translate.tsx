@@ -47,7 +47,24 @@ export default function Translate() {
     startListening,
     stopListening,
     resetTranscript,
+    error: voiceError,
   } = useSpeechRecognition("en-US");
+
+  // Surface microphone / speech-recognition problems to the user instead of
+  // failing silently (behaviour varies across Android WebViews).
+  useEffect(() => {
+    if (!voiceError) return;
+    const messages: Record<string, string> = {
+      "not-allowed": "Microphone access is blocked. Please allow microphone permission in your settings and try again.",
+      "service-not-allowed": "Microphone access is blocked. Please allow microphone permission in your settings and try again.",
+      "no-speech": "Didn't catch that — please tap the mic and speak again.",
+      "audio-capture": "No microphone was found on this device.",
+      "network": "Voice input needs an internet connection.",
+      "aborted": "",
+    };
+    const msg = messages[voiceError] ?? "Voice input isn't available right now. You can type instead.";
+    if (msg) toast.error(msg);
+  }, [voiceError]);
 
   // Update input text when voice transcription changes
   useEffect(() => {
