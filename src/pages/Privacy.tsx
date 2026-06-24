@@ -8,6 +8,16 @@ import { PrivacyPolicyContent } from "@/components/legal/PrivacyPolicyContent";
 export default function Privacy() {
   const navigate = useNavigate();
 
+  const handleBack = () => {
+    // When opened in a new tab / directly via URL there's no history to go
+    // back to, so fall back to the home page.
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate("/");
+    }
+  };
+
   return (
     <AppLayout title="Privacy Policy" hideNav>
       <AnimatedPage>
@@ -17,7 +27,7 @@ export default function Privacy() {
               variant="ghost"
               size="icon"
               className="h-10 w-10 rounded-xl"
-              onClick={() => navigate(-1)}
+              onClick={handleBack}
               aria-label="Go back"
             >
               <ChevronLeft className="h-5 w-5" />

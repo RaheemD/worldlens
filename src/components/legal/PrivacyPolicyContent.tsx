@@ -2,7 +2,7 @@
 // Rendered both on the standalone /privacy page and inside the Settings modal.
 
 // Update these two values as needed.
-export const PRIVACY_CONTACT_EMAIL = "dhananir1@gmail.com";
+export const PRIVACY_CONTACT_EMAIL = "info@appfinityaistudio.com";
 export const PRIVACY_LAST_UPDATED = "June 24, 2026";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
