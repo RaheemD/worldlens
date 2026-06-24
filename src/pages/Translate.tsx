@@ -14,6 +14,7 @@ import { useGeolocation } from "@/hooks/useGeolocation";
 import { languages, getLanguageFromCountry, getLanguageName } from "@/lib/languages";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { VoiceInputButton } from "@/components/voice/VoiceInputButton";
+import { MIC_BLOCKED_HELP } from "@/lib/permissions";
 
 const quickPhrases = [
   { en: "Where is the bathroom?", category: "Essential" },
@@ -55,8 +56,8 @@ export default function Translate() {
   useEffect(() => {
     if (!voiceError) return;
     const messages: Record<string, string> = {
-      "not-allowed": "Microphone access is blocked. Please allow microphone permission in your settings and try again.",
-      "service-not-allowed": "Microphone access is blocked. Please allow microphone permission in your settings and try again.",
+      "not-allowed": MIC_BLOCKED_HELP,
+      "service-not-allowed": MIC_BLOCKED_HELP,
       "no-speech": "Didn't catch that — please tap the mic and speak again.",
       "audio-capture": "No microphone was found on this device.",
       "network": "Voice input needs an internet connection.",

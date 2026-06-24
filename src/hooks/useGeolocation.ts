@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
+import { toast } from "sonner";
+import { LOCATION_BLOCKED_HELP } from "@/lib/permissions";
 
 let sharedGeolocationState: GeolocationState | null = null;
 let hasAutoRequestedOncePerSession = false;
@@ -256,6 +258,10 @@ export function useGeolocation(options: UseGeolocationOptions = {}) {
             resolve(sharedGeolocationState);
           },
           async (err) => {
+            // Only fires from an explicit user retry - guide them if blocked.
+            if (err.code === err.PERMISSION_DENIED) {
+              toast.error(LOCATION_BLOCKED_HELP);
+            }
             const fallback = await fallbackToIp();
             if (fallback) {
               resolve(fallback);
