@@ -333,6 +333,20 @@ export function AuthDialog({ open, onOpenChange }: AuthDialogProps) {
                   )}
                 </button>
               </div>
+
+              {/* Privacy notice - shown before account creation */}
+              <p className="text-center text-xs text-muted-foreground">
+                By continuing, you agree to our{" "}
+                <a
+                  href="/privacy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                >
+                  Privacy Policy
+                </a>
+                .
+              </p>
             </>
           )}
         </div>
