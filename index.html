@@ -85,21 +85,29 @@
   <body>
     <div id="root">
       <div id="app-splash">
-        <svg class="splash-logo" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <svg class="splash-logo" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
           <defs>
             <linearGradient id="splashGrad" x1="0" y1="0" x2="1" y2="1">
               <stop offset="0" stop-color="#12c08f"/>
               <stop offset="0.55" stop-color="#0ba5c9"/>
               <stop offset="1" stop-color="#0a82d8"/>
             </linearGradient>
+            <radialGradient id="splashHl" cx="0.32" cy="0.27" r="0.78">
+              <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
+              <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.05"/>
+              <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+            </radialGradient>
           </defs>
-          <g stroke="url(#splashGrad)" stroke-width="24" fill="none" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="256" cy="256" r="190"/>
-            <line x1="256" y1="66" x2="256" y2="446"/>
-            <line x1="66" y1="256" x2="446" y2="256"/>
-            <ellipse cx="256" cy="256" rx="95" ry="190"/>
-            <path d="M86 176 Q 256 236 426 176"/>
-            <path d="M86 336 Q 256 276 426 336"/>
+          <rect width="1024" height="1024" rx="224" ry="224" fill="url(#splashGrad)"/>
+          <rect width="1024" height="1024" rx="224" ry="224" fill="url(#splashHl)"/>
+          <g transform="translate(512,512)" stroke="#ffffff" stroke-width="30" fill="none"
+             stroke-linecap="round" stroke-linejoin="round">
+            <circle r="232"/>
+            <line x1="0" y1="-232" x2="0" y2="232"/>
+            <line x1="-232" y1="0" x2="232" y2="0"/>
+            <ellipse rx="116" ry="232"/>
+            <path d="M-214 -84 Q 0 -22 214 -84"/>
+            <path d="M-214 84 Q 0 22 214 84"/>
           </g>
         </svg>
         <h1 class="splash-title">World<b>Lens</b></h1>

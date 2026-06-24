@@ -9,23 +9,24 @@ import { dirname, join } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(__dirname, "..", "public");
-const svg = readFileSync(join(publicDir, "app-icon.svg"));
 
+// "any" icons + splash use the rounded squircle; maskable/store use full-bleed.
 const targets = [
-  { file: "pwa-192x192.png", size: 192 },
-  { file: "pwa-512x512.png", size: 512 },
-  { file: "pwa-maskable-512x512.png", size: 512 },
-  { file: "apple-touch-icon.png", size: 180 },
-  { file: "icon-1024.png", size: 1024 },
+  { file: "pwa-192x192.png", size: 192, src: "app-icon-rounded.svg" },
+  { file: "pwa-512x512.png", size: 512, src: "app-icon-rounded.svg" },
+  { file: "pwa-maskable-512x512.png", size: 512, src: "app-icon.svg" },
+  { file: "apple-touch-icon.png", size: 180, src: "app-icon.svg" },
+  { file: "icon-1024.png", size: 1024, src: "app-icon.svg" },
 ];
 
 for (const t of targets) {
+  const svg = readFileSync(join(publicDir, t.src));
   // Render the SVG at a high density first, then resize for crisp edges.
   await sharp(svg, { density: 384 })
     .resize(t.size, t.size, { fit: "cover" })
     .png()
     .toFile(join(publicDir, t.file));
-  console.log("generated", t.file);
+  console.log("generated", t.file, "from", t.src);
 }
 
 console.log("Done.");
