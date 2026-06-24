@@ -113,9 +113,9 @@ export function PrivacyPolicyContent() {
           <li>You can delete individual scans, trips, and spending records within the app at any time.</li>
           <li>You can update your profile and preferences in Settings.</li>
           <li>
-            You can request deletion of your account and associated data by contacting us at the
-            email below. We will delete your data within a reasonable period, except where retention
-            is required by law.
+            You can permanently delete your account and all associated data at any time from{" "}
+            <strong>Settings &rarr; Legal &rarr; Delete Account</strong>. You may also email us to
+            request deletion. Account deletion is immediate and cannot be undone.
           </li>
         </ul>
       </Section>
@@ -156,7 +156,6 @@ export function PrivacyPolicyContent() {
           <a href={`mailto:${PRIVACY_CONTACT_EMAIL}`} className="text-primary hover:underline">
             {PRIVACY_CONTACT_EMAIL}
           </a>
-          .
         </p>
       </Section>
     </div>

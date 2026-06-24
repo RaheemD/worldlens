@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, User, Bell, Globe, Palette, LogOut, Save, Loader2, Camera, X, Shield } from "lucide-react";
+import { ChevronLeft, User, Bell, Globe, Palette, LogOut, Save, Loader2, Camera, X, Shield, Trash2 } from "lucide-react";
 import { motion, useMotionValue, useTransform, animate } from "framer-motion";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
@@ -23,13 +23,15 @@ import { toast } from "sonner";
 import { ContactForm } from "@/components/support/ContactForm";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { PrivacyPolicyContent } from "@/components/legal/PrivacyPolicyContent";
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -40,7 +42,8 @@ export default function Settings() {
   
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
-  const [privacyOpen, setPrivacyOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [hasLocalChanges, setHasLocalChanges] = useState(false); // Track if user made local changes
   const [displayName, setDisplayName] = useState(profile?.display_name || "");
   const [avatarUrl, setAvatarUrl] = useState(profile?.avatar_url || "");
@@ -179,6 +182,38 @@ export default function Settings() {
     } else {
       setHasLocalChanges(false); // Clear the flag after successful save
       toast.success("Settings saved successfully");
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    setIsDeleting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) {
+        toast.error("Please sign in again to delete your account");
+        setIsDeleting(false);
+        return;
+      }
+
+      const res = await fetch("/.netlify/functions/delete-account", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) {
+        const info = await res.json().catch(() => ({}));
+        throw new Error(info.error || "Deletion failed");
+      }
+
+      toast.success("Your account and data have been deleted");
+      setDeleteOpen(false);
+      await signOut();
+      navigate("/", { replace: true });
+    } catch (err) {
+      console.error("Account deletion error:", err);
+      toast.error("Could not delete account. Please contact support.");
+      setIsDeleting(false);
     }
   };
 
@@ -472,50 +507,62 @@ export default function Settings() {
           </CardContent>
         </Card>
 
-        {/* Legal Section */}
+        {/* Legal & Account Section */}
         <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
           <CardHeader className="pb-4">
             <div className="flex items-center gap-2">
               <Shield className="h-5 w-5 text-primary" />
-              <CardTitle className="text-lg">Legal</CardTitle>
+              <CardTitle className="text-lg">Legal &amp; Account</CardTitle>
             </div>
-            <CardDescription>How we handle your data</CardDescription>
+            <CardDescription>Manage your account and data</CardDescription>
           </CardHeader>
           <CardContent>
             <Button
               variant="outline"
-              className="w-full justify-start"
-              onClick={() => setPrivacyOpen(true)}
+              className="w-full justify-start border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => setDeleteOpen(true)}
             >
-              <Shield className="h-4 w-4 mr-2 text-primary" />
-              Privacy Policy
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete Account
             </Button>
+            <p className="text-xs text-muted-foreground mt-2">
+              Permanently deletes your account and all associated data.
+            </p>
           </CardContent>
         </Card>
 
-        {/* Privacy Policy Modal */}
-        <Dialog open={privacyOpen} onOpenChange={setPrivacyOpen}>
-          <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Shield className="h-5 w-5 text-primary" />
-                Privacy Policy
-              </DialogTitle>
-              <DialogDescription>How WorldLens handles your data</DialogDescription>
-            </DialogHeader>
-            <PrivacyPolicyContent />
-            <Button
-              variant="ghost"
-              className="w-full text-primary"
-              onClick={() => {
-                setPrivacyOpen(false);
-                navigate("/privacy");
-              }}
-            >
-              Open full page
-            </Button>
-          </DialogContent>
-        </Dialog>
+        {/* Delete Account confirmation */}
+        <AlertDialog open={deleteOpen} onOpenChange={(o) => !isDeleting && setDeleteOpen(o)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete your account?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This permanently deletes your account and all your data — profile, saved scans,
+                trips, and spending records. This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleDeleteAccount();
+                }}
+                disabled={isDeleting}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  "Delete Account"
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* Save Button */}
         <Button
