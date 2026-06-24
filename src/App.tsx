@@ -24,6 +24,7 @@ import PlanTrip from "./pages/PlanTrip";
 import SharedTrip from "./pages/SharedTrip";
 import NotFound from "./pages/NotFound";
 import ResetPassword from "./pages/ResetPassword";
+import Privacy from "./pages/Privacy";
 
 const queryClient = new QueryClient();
 
@@ -47,6 +48,7 @@ function AnimatedRoutes() {
         <Route path="/journal" element={<ProtectedRoute><Journal /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
         <Route path="/trip/:shareCode" element={<SharedTrip />} />
+        <Route path="/privacy" element={<Privacy />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </AnimatePresence>

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, User, Bell, Globe, Palette, LogOut, Save, Loader2, Camera, X } from "lucide-react";
+import { ChevronLeft, User, Bell, Globe, Palette, LogOut, Save, Loader2, Camera, X, Shield } from "lucide-react";
 import { motion, useMotionValue, useTransform, animate } from "framer-motion";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,14 @@ import { countries } from "@/lib/countries";
 import { toast } from "sonner";
 import { ContactForm } from "@/components/support/ContactForm";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { PrivacyPolicyContent } from "@/components/legal/PrivacyPolicyContent";
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -32,6 +40,7 @@ export default function Settings() {
   
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [privacyOpen, setPrivacyOpen] = useState(false);
   const [hasLocalChanges, setHasLocalChanges] = useState(false); // Track if user made local changes
   const [displayName, setDisplayName] = useState(profile?.display_name || "");
   const [avatarUrl, setAvatarUrl] = useState(profile?.avatar_url || "");
@@ -462,6 +471,51 @@ export default function Settings() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Legal Section */}
+        <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
+          <CardHeader className="pb-4">
+            <div className="flex items-center gap-2">
+              <Shield className="h-5 w-5 text-primary" />
+              <CardTitle className="text-lg">Legal</CardTitle>
+            </div>
+            <CardDescription>How we handle your data</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              onClick={() => setPrivacyOpen(true)}
+            >
+              <Shield className="h-4 w-4 mr-2 text-primary" />
+              Privacy Policy
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Privacy Policy Modal */}
+        <Dialog open={privacyOpen} onOpenChange={setPrivacyOpen}>
+          <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Shield className="h-5 w-5 text-primary" />
+                Privacy Policy
+              </DialogTitle>
+              <DialogDescription>How WorldLens handles your data</DialogDescription>
+            </DialogHeader>
+            <PrivacyPolicyContent />
+            <Button
+              variant="ghost"
+              className="w-full text-primary"
+              onClick={() => {
+                setPrivacyOpen(false);
+                navigate("/privacy");
+              }}
+            >
+              Open full page
+            </Button>
+          </DialogContent>
+        </Dialog>
 
         {/* Save Button */}
         <Button
